@@ -1,0 +1,201 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* Luxury Light Theme Default */
+  --font-size: 16px;
+  
+  /* Light Backgrounds */
+  --background: oklch(0.99 0 0); /* Pure Off-white */
+  --foreground: oklch(0.25 0.02 280); /* Deep Charcoal */
+  
+  /* Cards with soft shadows */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.25 0.02 280);
+  
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.25 0.02 280);
+  
+  /* Gold Primary - Refined for light theme readability */
+  --primary: oklch(0.68 0.15 75); /* Enhanced Polished Gold - more vibrant */
+  --primary-foreground: oklch(0.99 0 0); /* White text on Gold */
+  
+  --secondary: oklch(0.96 0.01 280); /* Very Light Gray */
+  --secondary-foreground: oklch(0.25 0.02 280);
+  
+  --muted: oklch(0.94 0.01 280);
+  --muted-foreground: oklch(0.5 0.02 280);
+  
+  --accent: oklch(0.92 0.02 280);
+  --accent-foreground: oklch(0.25 0.02 280);
+  
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  
+  --border: oklch(0.9 0.01 280); /* Subtle light border */
+  --input: oklch(0.96 0.01 280);
+  --ring: oklch(0.68 0.15 75); /* Gold Ring */
+  
+  --radius: 6px;
+
+  --sidebar: oklch(0.98 0.01 280); /* Clean white sidebar */
+  --sidebar-foreground: oklch(0.25 0.02 280);
+  --sidebar-primary: oklch(0.68 0.15 75);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.94 0.02 280);
+  --sidebar-accent-foreground: oklch(0.25 0.02 280);
+  --sidebar-border: oklch(0.92 0.01 280);
+  --sidebar-ring: oklch(0.68 0.15 75);
+  
+  --chart-1: oklch(0.68 0.15 75); /* Gold */
+  --chart-2: oklch(0.4 0.05 280); /* Slate */
+  --chart-3: oklch(0.6 0.05 280); /* Light Slate */
+  --chart-4: oklch(0.75 0.12 60);  /* Amber */
+  --chart-5: oklch(0.70 0.12 200); /* Teal */
+}
+
+/* Explicit Dark Mode (Pure Black & Gold version preserved) */
+.dark {
+  --background: oklch(0 0 0); /* Pure Black */
+  --foreground: oklch(0.96 0.03 80); /* Warm gold-tinted white */
+  --card: oklch(0.08 0.005 80); /* Very subtle gold tint */
+  --card-foreground: oklch(0.96 0.03 80);
+  --popover: oklch(0.1 0.005 80);
+  --popover-foreground: oklch(0.96 0.03 80);
+  --primary: oklch(0.82 0.18 78); /* More vibrant luxury gold */
+  --primary-foreground: oklch(0.05 0 0); /* Near black for contrast */
+  --secondary: oklch(0.15 0.005 80);
+  --secondary-foreground: oklch(0.96 0.02 80);
+  --muted: oklch(0.12 0.005 80);
+  --muted-foreground: oklch(0.55 0.02 80);
+  --accent: oklch(0.18 0.005 80);
+  --accent-foreground: oklch(0.96 0.02 80);
+  --destructive: oklch(0.50 0.20 25);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.20 0.005 80);
+  --input: oklch(0.12 0.005 80);
+  --ring: oklch(0.82 0.18 78);
+  --sidebar: oklch(0.05 0.005 80);
+  --sidebar-foreground: oklch(0.96 0.03 80);
+  --sidebar-primary: oklch(0.82 0.18 78);
+  --sidebar-primary-foreground: oklch(0.05 0 0);
+  --sidebar-accent: oklch(0.12 0.005 80);
+  --sidebar-accent-foreground: oklch(0.96 0.03 80);
+  --sidebar-border: oklch(0.15 0.005 80);
+  --sidebar-ring: oklch(0.82 0.18 78);
+  
+  /* Enhanced glassmorphism support */
+  --glass-bg: oklch(0.08 0.005 80 / 0.6);
+  --glass-border: oklch(0.20 0.005 80 / 0.3);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  
+  --color-gold: oklch(0.68 0.15 75);
+  --color-gold-muted: oklch(0.68 0.15 75 / 0.1);
+  
+  /* Extremely Subtle Shadows (10% of standard capacity) */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.005);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.01), 0 1px 2px -1px rgb(0 0 0 / 0.01);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.01), 0 2px 4px -2px rgb(0 0 0 / 0.01);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.01), 0 4px 6px -4px rgb(0 0 0 / 0.01);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.01), 0 8px 10px -6px rgb(0 0 0 / 0.01);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.025);
+
+  /* Global Shadow Opacity Cap */
+  --tw-shadow-opacity: 0.1;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  html {
+    font-size: var(--font-size);
+    font-family: 'Open Sans', 'Hanuman', sans-serif;
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  label {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1.5;
+  }
+}
