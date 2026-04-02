@@ -18,6 +18,7 @@ import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from 
 import { Menu } from "lucide-react";
 import { Button } from "./components/ui/Button";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { signOut } from "../services/auth.service";
 
 // Auth Guard Component
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
@@ -27,7 +28,7 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     // Check auth status on mount
     const checkAuth = () => {
-      const authStatus = localStorage.getItem("isLoggedIn") === "true";
+      const authStatus = Boolean(localStorage.getItem("admin_token") || localStorage.getItem("token"));
       setIsLoggedIn(authStatus);
       setIsChecking(false);
     };
@@ -96,9 +97,9 @@ const RootLayout = () => {
     }
   }, [location.pathname]);
   
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (!isMountedRef.current) return;
-    localStorage.removeItem("isLoggedIn");
+    await signOut();
     navigate("/login", { replace: true });
   };
 
@@ -188,8 +189,8 @@ const SettingsWrapper = () => {
   const tab = location.pathname.split('/').pop() || 'general';
   const fullTab = `settings-${tab === 'settings' ? 'general' : tab}`;
   
-  return <Settings onLogout={() => {
-    localStorage.removeItem("isLoggedIn");
+  return <Settings onLogout={async () => {
+    await signOut();
     navigate("/login", { replace: true });
   }} activeTab={fullTab} />;
 };
@@ -197,7 +198,6 @@ const SettingsWrapper = () => {
 const LoginComponent = () => {
   const navigate = useNavigate();
   const onLogin = () => {
-    localStorage.setItem("isLoggedIn", "true");
     navigate("/home", { replace: true });
   };
   return <Login onLogin={onLogin} />;

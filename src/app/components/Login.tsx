@@ -4,7 +4,9 @@ import { Eye, EyeOff, Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './ui/Button';
 import { Input } from './ui/Form';
-import logoImage from 'figma:asset/0bc35e9a665193604f05247f84c75e961cc2853e.png';
+import logoImage from '../../assets/0bc35e9a665193604f05247f84c75e961cc2853e.png';
+import { signIn } from '../../services/auth.service';
+import { HttpError } from '../../lib/http';
 
 interface LoginProps {
   onLogin: () => void;
@@ -26,16 +28,50 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     };
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const trimmedEmail = email.trim();
+    const passwordRule = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*]).{8,}$/;
+
+    if (!passwordRule.test(password)) {
+      toast.error('Password must include uppercase, lowercase, number, and special character.');
+      return;
+    }
+
     setIsLoading(true);
-    
-    // Simulate API call
-    loginTimerRef.current = setTimeout(() => {
+    try {
+      await signIn({ email: trimmedEmail, password });
       if (!isMountedRef.current) return;
-      setIsLoading(false);
+      toast.success('Logged in successfully');
       onLogin();
-    }, 1500);
+    } catch (error) {
+      if (!isMountedRef.current) return;
+      if (error instanceof HttpError) {
+        const backendMessage =
+          typeof error.details === 'object' &&
+          error.details !== null &&
+          'message' in (error.details as Record<string, unknown>)
+            ? String((error.details as Record<string, unknown>).message)
+            : undefined;
+
+        if (error.status === 401) {
+          toast.error(backendMessage || 'Invalid email or password');
+        } else if (error.status === 422) {
+          toast.error(backendMessage || 'Validation failed. Please check your email and password format.');
+        } else if (error.status === 429) {
+          toast.error(backendMessage || 'Too many attempts. Please wait and try again.');
+        } else {
+          toast.error(backendMessage || error.message || 'Login failed');
+        }
+      } else {
+        toast.error('Unable to login. Please try again.');
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
+    }
   };
 
   return (

@@ -19,7 +19,7 @@ import clsx from 'clsx';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { Button } from './ui/Button';
 import { filterFigmaProps } from './ui/utils';
-import logoImage from 'figma:asset/0bc35e9a665193604f05247f84c75e961cc2853e.png';
+import logoImage from '../../assets/0bc35e9a665193604f05247f84c75e961cc2853e.png';
 
 import { useNavigate } from 'react-router';
 
