@@ -1,5 +1,5 @@
-import React from 'react';
-import { Button } from './Button';
+import React from "react";
+import { Button } from "./Button";
 import {
   DialogRoot,
   DialogContent,
@@ -7,7 +7,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from './Dialog';
+} from "./Dialog";
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -24,8 +24,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   open,
   title,
   description,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   isLoading = false,
   onConfirm,
   onOpenChange,
@@ -36,11 +36,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description ? (
-            <DialogDescription className="whitespace-pre-line">{description}</DialogDescription>
+            <DialogDescription className="whitespace-pre-line">
+              {description}
+            </DialogDescription>
           ) : null}
         </DialogHeader>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isLoading}>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={isLoading}
+          >
             {cancelLabel}
           </Button>
           <Button variant="primary" onClick={onConfirm} isLoading={isLoading}>
