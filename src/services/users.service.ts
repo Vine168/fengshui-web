@@ -24,6 +24,10 @@ export async function listUsersMobile(params: UserListParams = {}) {
   };
 }
 
+export async function listUsers(params: UserListParams = {}) {
+  return listUsersMobile(params);
+}
+
 export async function updateUserStatus(id: string, status: UpdateUserStatusInput['status']) {
   return updateUserStatusMobile(id, { status });
 }

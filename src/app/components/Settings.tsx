@@ -22,30 +22,59 @@ import { Button } from './ui/Button';
 import { Input, Select } from './ui/Form';
 import { Badge } from './ui/Badge';
 import { DialogRoot, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/Dialog';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
 
 import { useNavigate } from 'react-router';
+import { signOut } from '../../services/auth.service';
+import { loadSettingsProfile, saveSettingsPassword, saveSettingsProfile } from '../../services/settings.service';
 
 interface SettingsProps {
   onLogout?: () => void;
   activeTab?: string;
 }
 
+type ConfirmAction =
+  | 'save-profile'
+  | 'save-password'
+  | 'logout'
+  | 'terminate-session'
+  | 'regenerate-api-key';
+
 export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initialTab }) => {
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState('general');
-  const [isLoading, setIsLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    confirmLabel: string;
+    action: ConfirmAction | null;
+    sessionId?: string;
+  }>({
+    open: false,
+    title: '',
+    description: '',
+    confirmLabel: 'Confirm',
+    action: null,
+  });
   const isMountedRef = useRef(true);
   
   // General Profile State
   const [profileData, setProfileData] = useState({
-    firstName: 'Piseth',
-    lastName: 'Feng',
-    email: 'master.piseth@fengshui.com',
-    language: 'en',
-    timezone: 'asia'
+    firstName: '',
+    lastName: '',
+    email: '',
+    name: '',
+    role: '',
+    isActive: true,
   });
 
   // Password Change State
@@ -85,26 +114,132 @@ export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initial
         setActiveTab(cleanTabId);
       }
     }
+
+    const loadProfile = async () => {
+      try {
+        setProfileLoading(true);
+        const profile = await loadSettingsProfile();
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        setProfileData({
+          firstName: profile.firstName,
+          lastName: profile.lastName,
+          email: profile.email,
+          name: profile.name,
+          role: profile.role,
+          isActive: profile.isActive,
+        });
+      } catch {
+        if (isMountedRef.current) {
+          toast.error('Failed to load profile settings');
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setProfileLoading(false);
+        }
+      }
+    };
+
+    loadProfile();
+
     return () => {
       isMountedRef.current = false;
     };
   }, [initialTab]);
 
-  const handleSaveProfile = () => {
-    // Basic validation
-    if (!profileData.firstName || !profileData.lastName || !profileData.email) {
+  const executeSaveProfile = async () => {
+    if (!profileData.firstName.trim() || !profileData.lastName.trim()) {
       toast.error('Please fill in all required fields');
       return;
     }
     
-    setIsLoading(true);
-    // Simulate API call
-    const timer = setTimeout(() => {
-      if (!isMountedRef.current) return;
-      setIsLoading(false);
-      toast.success('Profile settings saved successfully');
-    }, 1000);
-    return () => clearTimeout(timer);
+    try {
+      setProfileSaving(true);
+      const updatedProfile = await saveSettingsProfile({
+        first_name: profileData.firstName.trim(),
+        last_name: profileData.lastName.trim(),
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setProfileData((current) => ({
+        ...current,
+        firstName: updatedProfile.firstName,
+        lastName: updatedProfile.lastName,
+        email: updatedProfile.email,
+        name: updatedProfile.name,
+        role: updatedProfile.role,
+        isActive: updatedProfile.isActive,
+      }));
+      toast.success('Profile updated successfully');
+    } catch {
+      if (isMountedRef.current) {
+        toast.error('Failed to update profile');
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setProfileSaving(false);
+      }
+    }
+  };
+
+  const handleSaveProfile = () => {
+    if (!profileData.firstName.trim() || !profileData.lastName.trim()) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    setConfirmDialog({
+      open: true,
+      title: 'Confirm Profile Changes',
+      description: `You are about to save:\nFirst Name: ${profileData.firstName.trim()}\nLast Name: ${profileData.lastName.trim()}`,
+      confirmLabel: 'Save Changes',
+      action: 'save-profile',
+    });
+  };
+
+  const executeSavePassword = async () => {
+    if (!passwordData.current || !passwordData.new || !passwordData.confirm) {
+      toast.error('Please fill in all password fields');
+      return;
+    }
+    if (passwordData.new !== passwordData.confirm) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    if (passwordData.new.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    
+    try {
+      setPasswordSaving(true);
+      await saveSettingsPassword({
+        current_password: passwordData.current,
+        new_password: passwordData.new,
+        confirm_new_password: passwordData.confirm,
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      toast.success('Password changed successfully');
+      setIsPasswordOpen(false);
+      setPasswordData({ current: '', new: '', confirm: '' });
+    } catch {
+      if (isMountedRef.current) {
+        toast.error('Failed to change password');
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setPasswordSaving(false);
+      }
+    }
   };
 
   const handleSavePassword = () => {
@@ -120,22 +255,57 @@ export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initial
       toast.error('Password must be at least 8 characters');
       return;
     }
-    
-    // Simulate API call
-    const timer = setTimeout(() => {
-      if (!isMountedRef.current) return;
-      toast.success('Password updated successfully');
-      setIsPasswordOpen(false);
-      setPasswordData({ current: '', new: '', confirm: '' });
-    }, 800);
-    return () => clearTimeout(timer);
+
+    setConfirmDialog({
+      open: true,
+      title: 'Confirm Password Update',
+      description: 'Are you sure you want to update your password? You will use the new password on your next login.',
+      confirmLabel: 'Update Password',
+      action: 'save-password',
+    });
   };
 
-  const handleTerminateSession = (id: string) => {
-    if (confirm('Are you sure you want to log out this device?')) {
-      setSessions(sessions.filter(s => s.id !== id));
-      toast.success('Session terminated');
+  const executeLogout = async () => {
+    try {
+      setLogoutLoading(true);
+      if (onLogout) {
+        await onLogout();
+        return;
+      }
+
+      await signOut();
+      navigate('/login', { replace: true });
+    } catch {
+      toast.error('Failed to log out');
+    } finally {
+      if (isMountedRef.current) {
+        setLogoutLoading(false);
+      }
     }
+  };
+
+  const handleLogout = () => {
+    setConfirmDialog({
+      open: true,
+      title: 'Confirm Logout',
+      description: 'Are you sure you want to log out now?',
+      confirmLabel: 'Log Out',
+      action: 'logout',
+    });
+  };
+
+  const profileDisplayName = profileData.name || [profileData.firstName, profileData.lastName].filter(Boolean).join(' ') || 'Admin';
+  const profileInitials = `${profileData.firstName?.[0] || profileData.name?.[0] || 'A'}${profileData.lastName?.[0] || ''}`.toUpperCase();
+
+  const handleTerminateSession = (id: string) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Terminate Session',
+      description: 'Are you sure you want to log out this device?',
+      confirmLabel: 'Terminate',
+      action: 'terminate-session',
+      sessionId: id,
+    });
   };
 
   const handleSaveBankConfig = () => {
@@ -170,10 +340,53 @@ export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initial
   };
 
   const handleRegenerateApiKey = () => {
-    if (confirm('Are you sure you want to regenerate your API Key? This will invalidate the current key immediately.')) {
-      const newKey = 'sk_live_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      setBankData({ ...bankData, apiKey: newKey });
-      toast.success('New API Key generated');
+    setConfirmDialog({
+      open: true,
+      title: 'Regenerate API Key',
+      description: 'This will invalidate your current API key immediately. Do you want to continue?',
+      confirmLabel: 'Regenerate',
+      action: 'regenerate-api-key',
+    });
+  };
+
+  const handleConfirmDialogAction = async () => {
+    if (!confirmDialog.action) {
+      return;
+    }
+
+    setConfirmSubmitting(true);
+    try {
+      switch (confirmDialog.action) {
+        case 'save-profile':
+          await executeSaveProfile();
+          break;
+        case 'save-password':
+          await executeSavePassword();
+          break;
+        case 'logout':
+          await executeLogout();
+          break;
+        case 'terminate-session': {
+          if (confirmDialog.sessionId) {
+            setSessions((current) => current.filter((session) => session.id !== confirmDialog.sessionId));
+            toast.success('Session terminated');
+          }
+          break;
+        }
+        case 'regenerate-api-key': {
+          const newKey = 'sk_live_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+          setBankData((current) => ({ ...current, apiKey: newKey }));
+          toast.success('New API Key generated');
+          break;
+        }
+        default:
+          break;
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setConfirmSubmitting(false);
+      }
+      setConfirmDialog((current) => ({ ...current, open: false, action: null, sessionId: undefined }));
     }
   };
 
@@ -233,20 +446,23 @@ export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initial
                       <div className="flex items-center gap-6">
                         <div className="relative group cursor-pointer">
                           <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-purple-600 flex items-center justify-center text-3xl font-medium text-white shadow-md shadow-primary/2 border-4 border-card">
-                            MP
+                            {profileInitials}
                           </div>
                           <div className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                             <span className="text-xs text-white font-normal">Change</span>
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <h3 className="font-medium text-lg text-foreground">Master Piseth</h3>
-                          <p className="text-muted-foreground text-sm">{profileData.email}</p>
-                          <Badge variant="outline" className="mt-2 border-primary/30 text-primary bg-primary/5">Super Admin</Badge>
+                          <h3 className="font-medium text-lg text-foreground">{profileLoading ? 'Loading profile...' : profileDisplayName}</h3>
+                          <p className="text-muted-foreground text-sm">{profileData.email || 'Email not available'}</p>
+                          <Badge variant="outline" className="mt-2 border-primary/30 text-primary bg-primary/5">
+                            {profileData.role || 'admin'}
+                          </Badge>
                         </div>
                         <Button 
                           variant="danger" 
-                          onClick={onLogout}
+                          onClick={handleLogout}
+                          isLoading={logoutLoading}
                           className="ml-auto gap-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-400 border border-red-500/20"
                         >
                           <LogOut className="w-4 h-4" />
@@ -260,6 +476,7 @@ export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initial
                           <Input 
                             value={profileData.firstName}
                             onChange={(e) => setProfileData({...profileData, firstName: e.target.value})}
+                            disabled={profileLoading}
                           />
                         </div>
                         <div className="space-y-2">
@@ -267,6 +484,7 @@ export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initial
                           <Input 
                             value={profileData.lastName}
                             onChange={(e) => setProfileData({...profileData, lastName: e.target.value})}
+                            disabled={profileLoading}
                           />
                         </div>
                         <div className="space-y-2 md:col-span-2">
@@ -275,10 +493,11 @@ export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initial
                             <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input 
                               value={profileData.email}
-                              onChange={(e) => setProfileData({...profileData, email: e.target.value})}
-                              className="pl-9" 
+                              readOnly
+                              className="pl-9 bg-muted/40 cursor-not-allowed" 
                             />
                           </div>
+                          <p className="text-xs text-muted-foreground">Email is managed by the backend profile record.</p>
                         </div>
                       </div>
                       
@@ -286,7 +505,8 @@ export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initial
                         <Button 
                           variant="primary" 
                           onClick={handleSaveProfile}
-                          isLoading={isLoading}
+                          isLoading={profileSaving}
+                          disabled={profileLoading}
                         >
                           Save Changes
                         </Button>
@@ -571,10 +791,24 @@ export const Settings: React.FC<SettingsProps> = ({ onLogout, activeTab: initial
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setIsPasswordOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleSavePassword}>Update Password</Button>
+            <Button variant="primary" onClick={handleSavePassword} isLoading={passwordSaving}>Update Password</Button>
           </DialogFooter>
         </DialogContent>
       </DialogRoot>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        isLoading={confirmSubmitting}
+        onConfirm={handleConfirmDialogAction}
+        onOpenChange={(open: boolean) => {
+          if (!open) {
+            setConfirmDialog((current) => ({ ...current, open: false, action: null, sessionId: undefined }));
+          }
+        }}
+      />
     </div>
   );
 };

@@ -16,7 +16,7 @@ export function useUsers() {
         setError(null);
         const data = await listUsers();
         if (active) {
-          setUsers(data);
+          setUsers(data.users);
         }
       } catch (err) {
         if (active) {

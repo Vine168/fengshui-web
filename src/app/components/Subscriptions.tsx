@@ -245,7 +245,7 @@ export const Subscriptions: React.FC = () => {
           <Button
             variant="primary"
             onClick={() => {
-              setFormData({ features: [] });
+              setFormData({});
               setIsAddOpen(true);
             }}
             leftIcon={<Plus className="w-4 h-4" />}
