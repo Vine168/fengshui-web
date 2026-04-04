@@ -42,6 +42,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "./ui/dropdown-menu";
+import { TooltipProvider } from "./ui/tooltip";
+import { ActionTooltip } from "./ui/ActionTooltip";
 import { Pagination } from "./ui/Pagination";
 import type { PromoCodeInput } from "../../types/promoCode";
 import {
@@ -416,7 +418,7 @@ export const PromoCodes: React.FC = () => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-4 m-[0px]">
           <div className="relative w-full md:w-64">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search codes..."
               className="pl-8"
@@ -428,22 +430,6 @@ export const PromoCodes: React.FC = () => {
             />
           </div>
           <div className="flex gap-2">
-            {(statusFilter.length > 0 || typeFilter.length > 0) && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setStatusFilter("");
-                  setTypeFilter("");
-                  setCurrentPage(1);
-                }}
-                className="text-muted-foreground hover:text-foreground"
-                leftIcon={<XCircle className="w-4 h-4" />}
-              >
-                Clear
-              </Button>
-            )}
-
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -525,6 +511,22 @@ export const PromoCodes: React.FC = () => {
                 </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {(statusFilter.length > 0 || typeFilter.length > 0) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setStatusFilter("");
+                  setTypeFilter("");
+                  setCurrentPage(1);
+                }}
+                className="text-muted-foreground hover:text-foreground"
+                leftIcon={<XCircle className="w-4 h-4" />}
+              >
+                Clear
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -635,48 +637,59 @@ export const PromoCodes: React.FC = () => {
                           className="py-4 px-6"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <div className="flex items-center justify-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void toggleStatus(code);
-                              }}
-                              title={
-                                code.status === "active" ? "Disable" : "Enable"
-                              }
-                            >
-                              {code.status === "active" ? (
-                                <XCircle className="w-3.5 h-3.5" />
-                              ) : (
-                                <CheckCircle className="w-3.5 h-3.5" />
-                              )}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void openEdit(code);
-                              }}
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(code.id);
-                              }}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
+                          <TooltipProvider delayDuration={120}>
+                            <div className="flex items-center justify-center gap-1">
+                              <ActionTooltip
+                                label={
+                                  code.status === "active"
+                                    ? "Disable code"
+                                    : "Enable code"
+                                }
+                              >
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void toggleStatus(code);
+                                  }}
+                                >
+                                  {code.status === "active" ? (
+                                    <XCircle className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                  )}
+                                </Button>
+                              </ActionTooltip>
+                              <ActionTooltip label="Edit code">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void openEdit(code);
+                                  }}
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </ActionTooltip>
+                              <ActionTooltip label="Delete code">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDelete(code.id);
+                                  }}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </ActionTooltip>
+                            </div>
+                          </TooltipProvider>
                         </TableCell>
                       </TableRow>
                     ))

@@ -1,9 +1,12 @@
 import { http } from '../lib/http';
 import type {
   CreateRoleInput,
-  RolePermissionListResponse,
-  RolesListResponse,
   UpdateRoleInput,
+  RolesListResponse,
+  RolePermissionListResponse,
+  CreateRoleResponse,
+  UpdateRoleResponse,
+  DeleteRoleResponse,
 } from '../types/role';
 
 export type RoleListParams = {
@@ -26,19 +29,19 @@ export async function getRoles(params: RoleListParams = {}) {
 }
 
 export async function getRoleById(id: string) {
-  return http.get<{ code: number; message: string; data: unknown }>(`/admin/roles/${id}`);
+  return http.get<CreateRoleResponse>(`/admin/roles/${id}`);
 }
 
 export async function createRole(payload: CreateRoleInput) {
-  return http.post<{ code: number; message: string; data: unknown }>('/admin/roles', payload);
+  return http.post<CreateRoleResponse>('/admin/roles', payload);
 }
 
 export async function updateRole(id: string, payload: UpdateRoleInput) {
-  return http.put<{ code: number; message: string; data: unknown }>(`/admin/roles/${id}`, payload);
+  return http.put<UpdateRoleResponse>(`/admin/roles/${id}`, payload);
 }
 
 export async function deleteRole(id: string) {
-  return http.delete<{ code: number; message: string; data?: unknown }>(`/admin/roles/${id}`);
+  return http.delete<DeleteRoleResponse>(`/admin/roles/${id}`);
 }
 
 export async function getRolePermissions() {

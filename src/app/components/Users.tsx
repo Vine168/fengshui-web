@@ -45,8 +45,10 @@ import { format, subDays, subMonths } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { TooltipProvider } from "./ui/tooltip";
 import { cn } from "./ui/utils";
 import { Pagination } from "./ui/Pagination";
+import { ActionTooltip } from "./ui/ActionTooltip";
 import type { User } from "../../types/user";
 import {
   listUsersMobile,
@@ -302,21 +304,6 @@ export const Users: React.FC = () => {
                 </Popover>
               </div>
 
-              {(statusFilter || planFilter) && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setStatusFilter("");
-                    setPlanFilter("");
-                  }}
-                  className="h-10 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all gap-2 px-3 rounded-xl border border-rose-500/20"
-                >
-                  <XCircle className="w-4 h-4" />
-                  Clear
-                </Button>
-              )}
-
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -377,6 +364,21 @@ export const Users: React.FC = () => {
                   </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              {(statusFilter || planFilter) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStatusFilter("");
+                    setPlanFilter("");
+                  }}
+                  className="h-10 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all gap-2 px-3 rounded-xl border border-rose-500/20"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Clear
+                </Button>
+              )}
             </div>
           </div>
 
@@ -485,60 +487,70 @@ export const Users: React.FC = () => {
                             className="py-4 px-6"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <div className="flex items-center justify-center gap-1">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
+                            <TooltipProvider delayDuration={120}>
+                              <div className="flex items-center justify-center gap-1">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <ActionTooltip label="Edit status">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </ActionTooltip>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="end"
+                                    className="w-44"
+                                  >
+                                    <DropdownMenuLabel>
+                                      Update Status
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {(
+                                      [
+                                        "active",
+                                        "inactive",
+                                        "suspended",
+                                      ] as const
+                                    ).map((statusOption) => (
+                                      <DropdownMenuCheckboxItem
+                                        key={statusOption}
+                                        checked={user.status === statusOption}
+                                        onSelect={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          void handleStatusChange(
+                                            user,
+                                            statusOption,
+                                          );
+                                        }}
+                                      >
+                                        {statusOption.charAt(0).toUpperCase() +
+                                          statusOption.slice(1)}
+                                      </DropdownMenuCheckboxItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                                <ActionTooltip label="Delete user">
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
-                                    onClick={(e) => e.stopPropagation()}
+                                    className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedUser(user);
+                                      setIsDeleteOpen(true);
+                                    }}
                                   >
-                                    <Pencil className="w-3.5 h-3.5" />
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="end"
-                                  className="w-44"
-                                >
-                                  <DropdownMenuLabel>
-                                    Update Status
-                                  </DropdownMenuLabel>
-                                  <DropdownMenuSeparator />
-                                  {(
-                                    ["active", "inactive", "suspended"] as const
-                                  ).map((statusOption) => (
-                                    <DropdownMenuCheckboxItem
-                                      key={statusOption}
-                                      checked={user.status === statusOption}
-                                      onSelect={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        void handleStatusChange(
-                                          user,
-                                          statusOption,
-                                        );
-                                      }}
-                                    >
-                                      {statusOption.charAt(0).toUpperCase() +
-                                        statusOption.slice(1)}
-                                    </DropdownMenuCheckboxItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedUser(user);
-                                  setIsDeleteOpen(true);
-                                }}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
+                                </ActionTooltip>
+                              </div>
+                            </TooltipProvider>
                           </TableCell>
                         </Motion.tr>
                       ))}

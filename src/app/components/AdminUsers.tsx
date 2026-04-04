@@ -56,6 +56,8 @@ import {
 } from "./ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Checkbox } from "./ui/checkbox";
+import { TooltipProvider } from "./ui/tooltip";
+import { ActionTooltip } from "./ui/ActionTooltip";
 import { Pagination } from "./ui/Pagination";
 import { cn } from "./ui/utils";
 import { HttpError } from "../../lib/http";
@@ -1220,104 +1222,109 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                               {admin.lastActive}
                             </TableCell>
                             <TableCell className="pr-8 text-right">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 rounded-lg hover:bg-white/10"
+                              <TooltipProvider delayDuration={120}>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <ActionTooltip label="Admin actions">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 rounded-lg hover:bg-white/10"
+                                      >
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </ActionTooltip>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="end"
+                                    className="w-56 bg-secondary/95 backdrop-blur-2xl border-white/10 shadow-2xl"
                                   >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="end"
-                                  className="w-56 bg-secondary/95 backdrop-blur-2xl border-white/10 shadow-2xl"
-                                >
-                                  <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-                                    Account Actions
-                                  </DropdownMenuLabel>
-                                  {canUpdateAdmins && (
-                                    <React.Fragment key="edit">
-                                      <DropdownMenuItem
-                                        onClick={() => openEditAdmin(admin)}
-                                        className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                      >
-                                        <Edit className="h-4 w-4" /> Edit Admin
-                                      </DropdownMenuItem>
-                                    </React.Fragment>
-                                  )}
-                                  {canUpdateAdmins && (
-                                    <React.Fragment key="assign-role">
-                                      <DropdownMenuItem
-                                        onClick={() => {
-                                          setSelectedAdmin(admin);
-                                          setAdminFormMode("edit");
-                                          setAdminFormInitial({
-                                            name: admin.name,
-                                            email: admin.email,
-                                            password: "",
-                                            roleId: admin.roleId,
-                                            status: admin.status,
-                                          });
-                                          setIsAdminFormOpen(true);
-                                        }}
-                                        className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                      >
-                                        <ArrowLeftRight className="h-4 w-4" />{" "}
-                                        Assign Role
-                                      </DropdownMenuItem>
-                                    </React.Fragment>
-                                  )}
-                                  {canResetPasswords && (
-                                    <React.Fragment key="reset-password">
-                                      <DropdownMenuItem
-                                        onClick={() => {
-                                          setSelectedAdmin(admin);
-                                          setIsResetPasswordOpen(true);
-                                        }}
-                                        className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                      >
-                                        <KeyRound className="h-4 w-4" /> Reset
-                                        Password
-                                      </DropdownMenuItem>
-                                    </React.Fragment>
-                                  )}
-                                  {canUpdateAdmins && (
-                                    <React.Fragment key="toggle-status">
-                                      <DropdownMenuItem
-                                        onClick={() =>
-                                          handleAdminStatusToggle(admin)
-                                        }
-                                        className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                      >
-                                        {admin.status === "active" ? (
-                                          <XCircle className="h-4 w-4" />
-                                        ) : (
-                                          <CheckCircle2 className="h-4 w-4" />
-                                        )}
-                                        {admin.status === "active"
-                                          ? "Deactivate"
-                                          : "Activate"}
-                                      </DropdownMenuItem>
-                                    </React.Fragment>
-                                  )}
-                                  {canDeleteAdmins && !admin.isSystemRole && (
-                                    <React.Fragment key="delete">
-                                      <DropdownMenuSeparator className="bg-white/5" />
-                                      <DropdownMenuItem
-                                        onClick={() =>
-                                          setAdminDeleteTarget(admin)
-                                        }
-                                        className="gap-2 py-2 text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"
-                                      >
-                                        <Trash2 className="h-4 w-4" /> Delete
-                                        Admin
-                                      </DropdownMenuItem>
-                                    </React.Fragment>
-                                  )}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                                    <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                                      Account Actions
+                                    </DropdownMenuLabel>
+                                    {canUpdateAdmins && (
+                                      <React.Fragment key="edit">
+                                        <DropdownMenuItem
+                                          onClick={() => openEditAdmin(admin)}
+                                          className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                        >
+                                          <Edit className="h-4 w-4" /> Edit
+                                          Admin
+                                        </DropdownMenuItem>
+                                      </React.Fragment>
+                                    )}
+                                    {canUpdateAdmins && (
+                                      <React.Fragment key="assign-role">
+                                        <DropdownMenuItem
+                                          onClick={() => {
+                                            setSelectedAdmin(admin);
+                                            setAdminFormMode("edit");
+                                            setAdminFormInitial({
+                                              name: admin.name,
+                                              email: admin.email,
+                                              password: "",
+                                              roleId: admin.roleId,
+                                              status: admin.status,
+                                            });
+                                            setIsAdminFormOpen(true);
+                                          }}
+                                          className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                        >
+                                          <ArrowLeftRight className="h-4 w-4" />{" "}
+                                          Assign Role
+                                        </DropdownMenuItem>
+                                      </React.Fragment>
+                                    )}
+                                    {canResetPasswords && (
+                                      <React.Fragment key="reset-password">
+                                        <DropdownMenuItem
+                                          onClick={() => {
+                                            setSelectedAdmin(admin);
+                                            setIsResetPasswordOpen(true);
+                                          }}
+                                          className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                        >
+                                          <KeyRound className="h-4 w-4" /> Reset
+                                          Password
+                                        </DropdownMenuItem>
+                                      </React.Fragment>
+                                    )}
+                                    {canUpdateAdmins && (
+                                      <React.Fragment key="toggle-status">
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            handleAdminStatusToggle(admin)
+                                          }
+                                          className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                        >
+                                          {admin.status === "active" ? (
+                                            <XCircle className="h-4 w-4" />
+                                          ) : (
+                                            <CheckCircle2 className="h-4 w-4" />
+                                          )}
+                                          {admin.status === "active"
+                                            ? "Deactivate"
+                                            : "Activate"}
+                                        </DropdownMenuItem>
+                                      </React.Fragment>
+                                    )}
+                                    {canDeleteAdmins && !admin.isSystemRole && (
+                                      <React.Fragment key="delete">
+                                        <DropdownMenuSeparator className="bg-white/5" />
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            setAdminDeleteTarget(admin)
+                                          }
+                                          className="gap-2 py-2 text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"
+                                        >
+                                          <Trash2 className="h-4 w-4" /> Delete
+                                          Admin
+                                        </DropdownMenuItem>
+                                      </React.Fragment>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TooltipProvider>
                             </TableCell>
                           </Motion.tr>
                         ))
@@ -1455,39 +1462,46 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                                 </Badge>
                               </TableCell>
                               <TableCell className="pr-8 text-right">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      className="h-8 w-8 rounded-lg hover:bg-white/10"
+                                <TooltipProvider delayDuration={120}>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <ActionTooltip label="Role actions">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 rounded-lg hover:bg-white/10"
+                                        >
+                                          <MoreVertical className="h-4 w-4" />
+                                        </Button>
+                                      </ActionTooltip>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent
+                                      align="end"
+                                      className="w-52 bg-secondary/95 backdrop-blur-2xl border-white/10 shadow-2xl"
                                     >
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent
-                                    align="end"
-                                    className="w-52 bg-secondary/95 backdrop-blur-2xl border-white/10 shadow-2xl"
-                                  >
-                                    <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-                                      Role Actions
-                                    </DropdownMenuLabel>
-                                    <DropdownMenuItem
-                                      disabled={role.isSystem}
-                                      onClick={() => openEditRole(role)}
-                                      className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                    >
-                                      <Edit className="h-4 w-4" /> Edit Role
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      disabled={role.isSystem}
-                                      onClick={() => setRoleDeleteTarget(role)}
-                                      className="gap-2 py-2 text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"
-                                    >
-                                      <Trash2 className="h-4 w-4" /> Delete Role
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                      <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                                        Role Actions
+                                      </DropdownMenuLabel>
+                                      <DropdownMenuItem
+                                        disabled={role.isSystem}
+                                        onClick={() => openEditRole(role)}
+                                        className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                      >
+                                        <Edit className="h-4 w-4" /> Edit Role
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        disabled={role.isSystem}
+                                        onClick={() =>
+                                          setRoleDeleteTarget(role)
+                                        }
+                                        className="gap-2 py-2 text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"
+                                      >
+                                        <Trash2 className="h-4 w-4" /> Delete
+                                        Role
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </TooltipProvider>
                               </TableCell>
                             </Motion.tr>
                           ))

@@ -17,6 +17,8 @@ import {
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 import { Switch } from "./ui/Switch";
+import { TooltipProvider } from "./ui/tooltip";
+import { ActionTooltip } from "./ui/ActionTooltip";
 import {
   DialogRoot,
   DialogTrigger,
@@ -65,6 +67,7 @@ export const Subscriptions: React.FC = () => {
 
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
   const isMountedRef = useRef(true);
 
   // Dialog States
@@ -223,6 +226,18 @@ export const Subscriptions: React.FC = () => {
     return `${duration} Days`;
   };
 
+  const filteredPlans = plans.filter((plan) => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) return true;
+    return (
+      String(plan.plan_name).toLowerCase().includes(normalizedQuery) ||
+      String(plan.plan_type).toLowerCase().includes(normalizedQuery) ||
+      String(getFeatureLabel(plan.feature))
+        .toLowerCase()
+        .includes(normalizedQuery)
+    );
+  });
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex justify-between items-center">
@@ -235,13 +250,6 @@ export const Subscriptions: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-3">
-          <Button
-            variant="outline"
-            onClick={fetchPlans}
-            leftIcon={<RefreshCw className="w-4 h-4" />}
-          >
-            Refresh
-          </Button>
           <Button
             variant="primary"
             onClick={() => {
@@ -258,10 +266,22 @@ export const Subscriptions: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="md:col-span-2 overflow-hidden border-t-4 border-t-primary">
           <CardHeader>
-            <CardTitle>Active Plans</CardTitle>
-            <CardDescription>
-              Current subscription tiers available to users.
-            </CardDescription>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle>Active Plans</CardTitle>
+                <CardDescription>
+                  Current subscription tiers available to users.
+                </CardDescription>
+              </div>
+              <div className="w-full md:w-auto">
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search plan..."
+                  className="w-full md:w-64"
+                />
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="rounded-2xl border border-border/50 overflow-hidden bg-card/30 backdrop-blur-xl shadow-lg m-[0px]">
@@ -284,92 +304,114 @@ export const Subscriptions: React.FC = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {plans.map((plan) => (
-                      <TableRow
-                        key={plan.id}
-                        className="border-b border-border/30 transition-all duration-200 hover:bg-primary/5 cursor-pointer group/row"
-                      >
-                        <TableCell className="py-4 px-6">
-                          <div className="flex items-center gap-2">
-                            {plan.plan_name.includes("Master") ||
-                            plan.plan_name.includes("VIP") ? (
-                              <Crown className="w-4 h-4 text-amber-400" />
-                            ) : plan.plan_name.includes("Premium") ? (
-                              <Sparkles className="w-4 h-4 text-purple-400" />
-                            ) : (
-                              <Shield className="w-4 h-4 text-slate-400" />
-                            )}
-                            <span className="font-semibold text-foreground group-hover/row:text-primary transition-colors">
-                              {plan.plan_name}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="py-4 px-6">
-                          <span className="text-sm text-muted-foreground">
-                            {plan.plan_type}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-4 px-6">
-                          <span className="font-semibold text-sm">
-                            <FormattedNumber value={plan.price} prefix="$" />
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-4 px-6">
-                          <span className="text-sm text-muted-foreground">
-                            {getDurationLabel(plan.duration)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-4 px-6">
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] font-bold uppercase px-2 py-0.5"
-                          >
-                            {getFeatureLabel(plan.feature)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-4 px-6">
-                          <span className="font-semibold text-sm">
-                            <FormattedNumber value={plan.active_users} />
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-4 px-6">
-                          <Badge
-                            variant={plan.is_active ? "default" : "outline"}
-                          >
-                            {plan.is_active ? "Active" : "Inactive"}
-                          </Badge>
-                        </TableCell>
+                    {filteredPlans.length === 0 ? (
+                      <TableRow className="hover:bg-transparent">
                         <TableCell
-                          className="py-4 px-6"
-                          onClick={(e) => e.stopPropagation()}
+                          colSpan={8}
+                          className="text-center h-32 text-muted-foreground"
                         >
-                          <div className="flex items-center justify-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openEdit(plan);
-                              }}
-                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDelete(plan);
-                              }}
-                              className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
+                          No plans found.
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      filteredPlans.map((plan) => (
+                        <TableRow
+                          key={plan.id}
+                          className="border-b border-border/30 transition-all duration-200 hover:bg-primary/5 cursor-pointer group/row"
+                        >
+                          <TableCell className="py-4 px-6">
+                            <div className="flex items-center gap-2">
+                              {plan.plan_name.includes("Master") ||
+                              plan.plan_name.includes("VIP") ? (
+                                <Crown className="w-4 h-4 text-amber-400" />
+                              ) : plan.plan_name.includes("Premium") ? (
+                                <Sparkles className="w-4 h-4 text-purple-400" />
+                              ) : (
+                                <Shield className="w-4 h-4 text-slate-400" />
+                              )}
+                              <span className="font-semibold text-foreground group-hover/row:text-primary transition-colors">
+                                {plan.plan_name}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4 px-6">
+                            <span className="text-sm text-muted-foreground">
+                              {plan.plan_type}
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-4 px-6">
+                            <span className="font-semibold text-sm">
+                              <FormattedNumber value={plan.price} prefix="$" />
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-4 px-6">
+                            <span className="text-sm text-muted-foreground">
+                              {getDurationLabel(plan.duration)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-4 px-6">
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] font-bold uppercase px-2 py-0.5"
+                            >
+                              {getFeatureLabel(plan.feature)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-4 px-6">
+                            <span className="font-semibold text-sm">
+                              <FormattedNumber value={plan.active_users} />
+                            </span>
+                          </TableCell>
+                          <TableCell className="py-4 px-6">
+                            <Badge
+                              variant="outline"
+                              className={
+                                plan.is_active
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
+                                  : "border-rose-500/30 bg-rose-500/10 text-rose-500"
+                              }
+                            >
+                              {plan.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell
+                            className="py-4 px-6"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <TooltipProvider delayDuration={120}>
+                              <div className="flex items-center justify-center gap-1">
+                                <ActionTooltip label="Edit plan">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openEdit(plan);
+                                    }}
+                                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </Button>
+                                </ActionTooltip>
+                                <ActionTooltip label="Delete plan">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDelete(plan);
+                                    }}
+                                    className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </ActionTooltip>
+                              </div>
+                            </TooltipProvider>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </div>

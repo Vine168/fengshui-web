@@ -7,7 +7,12 @@ import {
   updateRole,
   type RoleListParams,
 } from '../api/roles.api';
-import type { CreateRoleInput, RolePermissionDefinition, UpdateRoleInput, AdminRoleRecord } from '../types/role';
+import type {
+  CreateRoleInput,
+  RolePermissionDefinition,
+  UpdateRoleInput,
+  AdminRoleRecord,
+} from '../types/role';
 
 export type RoleRow = {
   id: string;
@@ -19,26 +24,39 @@ export type RoleRow = {
   adminCount: number;
 };
 
+export type PermissionRow = {
+  key: string;
+  name: string;
+  description: string;
+  group: string;
+};
+
 function normalizeRole(record: AdminRoleRecord): RoleRow {
+  // Extract permission keys from either permission_keys array or permissions objects
+  const permissionKeys = record.permission_keys || (record.permissions?.map((p) => p.permission) ?? []);
+
   return {
     id: record.id,
     name: record.name,
     description: record.description || '',
     isSystem: Boolean(record.is_system),
-    permissionKeys: record.permission_keys || [],
-    permissionCount: record.permission_keys?.length || 0,
+    permissionKeys,
+    permissionCount: permissionKeys.length,
     adminCount: record.admin_count || 0,
   };
 }
 
-export function normalizePermission(permission: RolePermissionDefinition) {
-  const permissionKey = (permission as RolePermissionDefinition & { permission?: string }).permission || permission.key;
+export function normalizePermission(permission: RolePermissionDefinition): PermissionRow {
+  // Extract the last part of the permission key as the name if not provided
+  const permissionKey = permission.permission || '';
+  const nameParts = permissionKey.split('.');
+  const defaultName = nameParts.slice(1).join(' ').replace(/_/g, ' ') || permissionKey;
 
   return {
     key: permissionKey,
-    name: permission.name || permissionKey.split('.').slice(1).join(' ').replace(/_/g, ' ') || permissionKey,
+    name: permissionKey, // Use the full key as name for consistency
     description: permission.description || '',
-    group: permission.group || permission.module || permissionKey.split('.')[0] || 'general',
+    group: nameParts[0] || 'general',
   };
 }
 
@@ -48,7 +66,12 @@ export async function listRoles(params: RoleListParams = {}) {
 
   return {
     roles: roles.map((role) => normalizeRole(role)),
-    pagination: response.data.pagination || { page: 1, limit: params.limit || 10, total: roles.length, total_pages: 1 },
+    pagination: response.data.pagination || {
+      page: 1,
+      limit: params.limit || 10,
+      total: roles.length,
+      total_pages: 1,
+    },
   };
 }
 
