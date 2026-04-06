@@ -27,7 +27,8 @@ export interface User {
 }
 
 export interface UpdateUserStatusInput {
-  status: 'active' | 'inactive' | 'suspended';
+  status?: 'active' | 'inactive' | 'suspended';
+  is_active?: boolean;
 }
 
 export interface UpdateUserInput {
@@ -36,6 +37,7 @@ export interface UpdateUserInput {
   phone?: string;
   sex?: string;
   status?: 'active' | 'inactive' | 'suspended';
+  is_active?: boolean;
   plan_id?: string;
   date_of_birth?: string | null;
   time_of_birth?: string | null;

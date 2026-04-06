@@ -4,7 +4,6 @@ import type {
   AssignRoleInput,
   CreateAdminUserInput,
   ResetAdminPasswordInput,
-  UpdateAdminStatusInput,
   UpdateAdminUserInput,
 } from '../types/admin';
 
@@ -12,7 +11,7 @@ export type AdminUsersListParams = {
   page?: number;
   limit?: number;
   search?: string;
-  status?: 'active' | 'inactive' | 'suspended';
+  is_active?: boolean;
   role_id?: string;
 };
 
@@ -22,8 +21,9 @@ export async function getAdminUsers(params: AdminUsersListParams = {}) {
   if (params.page) query.set('page', String(params.page));
   if (params.limit) query.set('limit', String(params.limit));
   if (params.search) query.set('search', params.search);
-  if (params.status) query.set('status', params.status);
-  if (params.role_id) query.set('role_id', params.role_id);
+  if (typeof params.is_active === 'boolean') {
+    query.set('is_active', String(params.is_active));
+  }
 
   const queryString = query.toString();
   const path = queryString ? `/admin/users/system?${queryString}` : '/admin/users/system';
@@ -40,11 +40,23 @@ export async function getAdminUserById(id: string) {
 }
 
 export async function updateAdminUserById(id: string, payload: UpdateAdminUserInput) {
-  return http.put<{ code: number; message: string; data: unknown }>(`/admin/users/${id}`, payload);
-}
+  const requestPayload: Record<string, unknown> = {};
 
-export async function updateAdminStatusById(id: string, payload: UpdateAdminStatusInput) {
-  return http.patch<{ code: number; message: string; data: unknown }>(`/admin/users/${id}/status`, payload);
+  if (typeof payload.name === 'string') {
+    requestPayload.name = payload.name;
+  }
+
+  if (typeof payload.email === 'string') {
+    requestPayload.email = payload.email;
+  }
+
+  if (typeof payload.is_active === 'boolean') {
+    requestPayload.is_active = payload.is_active;
+  } else if (payload.status) {
+    requestPayload.is_active = payload.status === 'active';
+  }
+
+  return http.put<{ code: number; message: string; data: unknown }>(`/admin/users/${id}`, requestPayload);
 }
 
 export async function resetAdminPasswordById(id: string, payload: ResetAdminPasswordInput) {

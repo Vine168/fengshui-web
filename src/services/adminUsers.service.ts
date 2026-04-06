@@ -5,17 +5,16 @@ import {
   getAdminUserById,
   getAdminUsers,
   resetAdminPasswordById,
-  updateAdminStatusById,
   updateAdminUserById,
   type AdminUsersListParams,
 } from '../api/adminUsers.api';
-import type { AssignRoleInput, CreateAdminUserInput, ResetAdminPasswordInput, UpdateAdminStatusInput, UpdateAdminUserInput, AdminUserRecord } from '../types/admin';
+import type { AssignRoleInput, CreateAdminUserInput, ResetAdminPasswordInput, UpdateAdminUserInput, AdminUserRecord } from '../types/admin';
 
 export type AdminUserRow = {
   id: string;
   name: string;
   email: string;
-  status: 'active' | 'inactive' | 'suspended';
+  status: 'active' | 'inactive';
   roleId: string;
   roleName: string;
   isSystemRole: boolean;
@@ -23,18 +22,44 @@ export type AdminUserRow = {
   rolePermissionKeys: string[];
 };
 
-function normalizeAdminUser(record: AdminUserRecord): AdminUserRow {
-  const role = record.role;
-  const status = record.status || 'inactive';
+function normalizeAdminUser(
+  record: AdminUserRecord,
+  roleNameById: Map<string, string>,
+): AdminUserRow {
+  const roleValue = record.role;
+  const role =
+    roleValue && typeof roleValue === 'object'
+      ? (roleValue as { id?: string; name?: string; is_system?: boolean; permission_keys?: string[] })
+      : null;
+  const roleFromString = typeof roleValue === 'string' ? roleValue : '';
+  const status =
+    typeof record.is_active === 'boolean'
+      ? record.is_active
+        ? 'active'
+        : 'inactive'
+      : record.status === 'active'
+        ? 'active'
+        : 'inactive';
+
+  const roleId = record.role_id || record.roleId || role?.id || '';
+  const resolvedRoleName =
+    record.role_name ||
+    record.roleName ||
+    role?.name ||
+    roleFromString ||
+    (roleId ? roleNameById.get(roleId) : undefined) ||
+    (roleId ? 'Assigned Role' : 'Unassigned');
 
   return {
     id: record.id,
     name: record.name || 'Unnamed Admin',
     email: record.email || '-',
     status,
-    roleId: record.role_id || role?.id || '',
-    roleName: record.role_name || role?.name || 'Unassigned',
-    isSystemRole: Boolean(record.is_system || role?.is_system),
+    roleId,
+    roleName: resolvedRoleName,
+    isSystemRole: Boolean(
+      record.is_system || role?.is_system || resolvedRoleName === 'admin',
+    ),
     lastActive: record.last_active_at || record.updated_at || record.created_at || 'Never',
     rolePermissionKeys: role?.permission_keys || [],
   };
@@ -46,9 +71,16 @@ export async function listAdminUsers(params: AdminUsersListParams = {}) {
   const rows = payload.admins || payload.users || [];
 
   const roles = payload.filters?.roles || [];
+  const roleNameById = new Map(roles.map((role) => [role.id, role.name]));
+
+  let admins = rows.map((record) => normalizeAdminUser(record, roleNameById));
+
+  if (params.role_id) {
+    admins = admins.filter((admin) => admin.roleId === params.role_id);
+  }
 
   return {
-    admins: rows.map((record) => normalizeAdminUser(record)),
+    admins,
     pagination: payload.pagination || { page: 1, limit: params.limit || 10, total: rows.length, total_pages: 1 },
     roles: roles.map((role) => ({
       id: role.id,
@@ -74,8 +106,8 @@ export async function editAdminUser(id: string, payload: UpdateAdminUserInput) {
   return response.data;
 }
 
-export async function changeAdminStatus(id: string, status: UpdateAdminStatusInput['status']) {
-  return updateAdminStatusById(id, { status });
+export async function changeAdminStatus(id: string, status: AdminUserRow['status']) {
+  return updateAdminUserById(id, { is_active: status === 'active' });
 }
 
 export async function resetAdminPassword(id: string, payload: ResetAdminPasswordInput) {

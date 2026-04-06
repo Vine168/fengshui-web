@@ -21,13 +21,17 @@ export interface AdminUserRecord {
   id: string;
   name: string;
   email: string;
-  status: AdminStatus;
+  status?: AdminStatus;
+  is_active?: boolean;
+  account_type?: string;
   last_active_at?: string;
   created_at?: string;
   updated_at?: string;
   role_id?: string;
   role_name?: string;
-  role?: AdminRoleSummary | null;
+  role?: AdminRoleSummary | string | null;
+  roleId?: string;
+  roleName?: string;
   is_system?: boolean;
 }
 
@@ -62,6 +66,7 @@ export interface UpdateAdminUserInput {
   name?: string;
   email?: string;
   status?: AdminStatus;
+  is_active?: boolean;
 }
 
 export interface UpdateAdminStatusInput {

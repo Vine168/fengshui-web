@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/Button";
 import { filterFigmaProps } from "./ui/utils";
 import logoImage from "../../assets/0bc35e9a665193604f05247f84c75e961cc2853e.png";
+import { useAdminAccess } from "../../hooks/useAdminAccess";
 
 import { useNavigate } from "react-router";
 
@@ -33,39 +34,68 @@ type SidebarProps = {
 };
 
 const menuItems = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, path: "/home" },
-  { id: "users", label: "App Users", icon: Users, path: "/users" },
-  { id: "rules", label: "Feng Shui Rules", icon: BookOpen, path: "/rules" },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    path: "/home",
+    permissions: ["dashboard.read"],
+  },
+  {
+    id: "users",
+    label: "App Users",
+    icon: Users,
+    path: "/users",
+    permissions: ["mobile_users.read"],
+  },
+  {
+    id: "rules",
+    label: "Feng Shui Rules",
+    icon: BookOpen,
+    path: "/rules",
+    permissions: ["rules.read"],
+  },
   {
     id: "promo-codes",
     label: "Promo Codes",
     icon: Ticket,
     path: "/promo-codes",
+    permissions: ["promo_codes.read"],
   },
   {
     id: "subscriptions",
     label: "Subscriptions",
     icon: CreditCard,
     path: "/subscriptions",
+    permissions: ["subscriptions.read"],
   },
   {
     id: "notifications",
     label: "Notifications",
     icon: Bell,
     path: "/notifications",
+    permissions: ["notifications.read"],
   },
-  { id: "telegram", label: "Telegram Notify", icon: Send, path: "/telegram" },
+  {
+    id: "telegram",
+    label: "Telegram Notify",
+    icon: Send,
+    path: "/telegram",
+    permissions: ["telegram.read"],
+  },
   {
     id: "admin-users",
     label: "User System",
     icon: ShieldCheck,
     path: "/admin",
+    permissions: ["admin_users.read"],
   },
   {
     id: "settings-general",
     label: "General Settings",
     icon: Settings,
     path: "/settings/general",
+    permissions: ["settings.read"],
   },
 ];
 
@@ -78,6 +108,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMobile = false,
 }) => {
   const navigate = useNavigate();
+  const { hasAnyPermission, isSuperUser } = useAdminAccess();
+
+  const visibleMenuItems = menuItems.filter((item) => {
+    if (!item.permissions || item.permissions.length === 0) {
+      return true;
+    }
+
+    return isSuperUser || hasAnyPermission(item.permissions);
+  });
+
   return (
     <div
       className={clsx(
@@ -126,7 +166,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <nav className="flex-1 space-y-1 overflow-y-auto custom-scrollbar flex flex-col px-[12px] pt-[24px] pb-[0px]">
         <div className="flex-1 space-y-1">
-          {menuItems
+          {visibleMenuItems
             .filter((item) => item.id !== "settings-security")
             .map((item) => {
               // Rename General Settings to just Settings
@@ -201,6 +241,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               );
             })}
+
+          {visibleMenuItems.length === 0 && (
+            <div className="px-4 py-6 rounded-lg border border-sidebar-border bg-sidebar-accent/20 text-sidebar-foreground/70 text-sm">
+              No features are assigned to your account yet.
+            </div>
+          )}
         </div>
 
         {/* System Version info at the bottom of the scrollable area */}

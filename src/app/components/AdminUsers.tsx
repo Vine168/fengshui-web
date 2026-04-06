@@ -60,6 +60,7 @@ import { TooltipProvider } from "./ui/tooltip";
 import { ActionTooltip } from "./ui/ActionTooltip";
 import { Pagination } from "./ui/Pagination";
 import { cn } from "./ui/utils";
+import { PermissionDenied } from "./PermissionDenied";
 import { HttpError } from "../../lib/http";
 import { useAdminAccess } from "../../hooks/useAdminAccess";
 import {
@@ -88,7 +89,7 @@ type AdminFormState = {
   email: string;
   password: string;
   roleId: string;
-  status: "active" | "inactive" | "suspended";
+  status: "active" | "inactive";
 };
 
 type RoleFormState = {
@@ -109,10 +110,9 @@ type PermissionGroup = {
 
 const ADMIN_PAGE_SIZE = 10;
 const ROLE_PAGE_SIZE = 10;
-const ADMIN_STATUS_OPTIONS: Array<"active" | "inactive" | "suspended"> = [
+const ADMIN_STATUS_OPTIONS: Array<"active" | "inactive"> = [
   "active",
   "inactive",
-  "suspended",
 ];
 
 const DEFAULT_ADMIN_FORM: AdminFormState = {
@@ -201,6 +201,7 @@ function AdminUserFormDialog({
   mode,
   initialValue,
   roleOptions,
+  canAssignRole,
   onSubmit,
 }: {
   open: boolean;
@@ -208,6 +209,7 @@ function AdminUserFormDialog({
   mode: "create" | "edit";
   initialValue: AdminFormState;
   roleOptions: Array<{ id: string; name: string }>;
+  canAssignRole: boolean;
   onSubmit: (value: AdminFormState) => Promise<void>;
 }) {
   const [form, setForm] = useState<AdminFormState>(initialValue);
@@ -346,6 +348,7 @@ function AdminUserFormDialog({
             </label>
             <Select
               value={form.roleId}
+              disabled={!canAssignRole}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
@@ -363,7 +366,9 @@ function AdminUserFormDialog({
               ))}
             </Select>
             <p className="text-xs text-muted-foreground">
-              Permissions are inherited from the selected role.
+              {canAssignRole
+                ? "Permissions are inherited from the selected role."
+                : "You do not have permission to change roles."}
             </p>
           </div>
         </div>
@@ -719,6 +724,8 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
   const canDeleteAdmins = hasPermission("admin_users.delete");
   const canResetPasswords =
     hasPermission("admin_users.reset_password") || isSuperUser;
+  const canAssignRoles = canManageRoles || isSuperUser;
+  const canReadAdmins = hasPermission("admin_users.read") || isSuperUser;
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
@@ -732,7 +739,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
   const [adminLoading, setAdminLoading] = useState(true);
   const [adminSearch, setAdminSearch] = useState("");
   const [adminStatusFilter, setAdminStatusFilter] = useState<
-    "" | "active" | "inactive" | "suspended"
+    "" | "active" | "inactive"
   >("");
   const [adminRoleFilter, setAdminRoleFilter] = useState("");
   const [adminPage, setAdminPage] = useState(1);
@@ -788,7 +795,8 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
         page,
         limit: ADMIN_PAGE_SIZE,
         search: adminSearch || undefined,
-        status: adminStatusFilter || undefined,
+        is_active:
+          adminStatusFilter === "" ? undefined : adminStatusFilter === "active",
         role_id: adminRoleFilter || undefined,
       });
 
@@ -810,6 +818,13 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
   };
 
   const loadRoles = async (page = rolePage) => {
+    if (!canManageRoles && !isSuperUser) {
+      setRoles([]);
+      setPermissions([]);
+      setRoleLoading(false);
+      return;
+    }
+
     try {
       setRoleLoading(true);
       const [roleResponse, permissionList] = await Promise.all([
@@ -841,9 +856,12 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
 
   useEffect(() => {
     loadAdmins(1);
-    loadRoles(1);
+
+    if (canManageRoles || isSuperUser) {
+      loadRoles(1);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canManageRoles, isSuperUser]);
 
   useEffect(() => {
     if (activeTab === "admins") {
@@ -926,17 +944,37 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
       });
       toast.success("Admin user created");
     } else if (selectedAdmin) {
-      await editAdminUser(selectedAdmin.id, {
-        name: value.name,
-        email: value.email,
-        status: value.status,
-      });
+      const profileChanged =
+        value.name !== selectedAdmin.name ||
+        value.email !== selectedAdmin.email ||
+        value.status !== selectedAdmin.status;
 
-      if (value.roleId && value.roleId !== selectedAdmin.roleId) {
+      const roleChanged = value.roleId && value.roleId !== selectedAdmin.roleId;
+
+      if (profileChanged) {
+        await editAdminUser(selectedAdmin.id, {
+          name: value.name,
+          email: value.email,
+          status: value.status,
+        });
+      }
+
+      if (roleChanged && !canAssignRoles) {
+        toast.error("You do not have permission to assign roles");
+        return;
+      }
+
+      if (roleChanged) {
         await setAdminRole(selectedAdmin.id, { role_id: value.roleId });
       }
 
-      toast.success("Admin user updated");
+      if (profileChanged || roleChanged) {
+        toast.success(
+          roleChanged ? "Role assigned successfully" : "Admin user updated",
+        );
+      } else {
+        toast.success("No changes to update");
+      }
     }
 
     await loadAdmins(adminPagination.page);
@@ -995,6 +1033,15 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
     await loadRoles(rolePagination.page);
   };
 
+  if (!canReadAdmins) {
+    return (
+      <PermissionDenied
+        title="Admin Module Restricted"
+        description="You do not have permission to view admin users. Contact your administrator to request admin_users.read access."
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -1035,7 +1082,9 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
             variant="ghost"
             onClick={() => {
               loadAdmins(adminPagination.page);
-              loadRoles(rolePagination.page);
+              if (canManageRoles || isSuperUser) {
+                loadRoles(rolePagination.page);
+              }
             }}
             leftIcon={<RefreshCw className="w-4 h-4" />}
           >
@@ -1088,11 +1137,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                   value={adminStatusFilter}
                   onChange={(event) => {
                     setAdminStatusFilter(
-                      event.target.value as
-                        | ""
-                        | "active"
-                        | "inactive"
-                        | "suspended",
+                      event.target.value as "" | "active" | "inactive",
                     );
                     setAdminPage(1);
                   }}
@@ -1128,221 +1173,238 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                 </Select>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-white/10">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-b border-white/5 bg-black/20 hover:bg-black/20">
-                      <TableHead className="py-4 text-[10px] font-black uppercase tracking-[0.2em] text-primary/50">
-                        Admin
-                      </TableHead>
-                      <TableHead className="py-4 text-[10px] font-black uppercase tracking-[0.2em] text-primary/50">
-                        Role
-                      </TableHead>
-                      <TableHead className="py-4 text-[10px] font-black uppercase tracking-[0.2em] text-primary/50">
-                        Status
-                      </TableHead>
-                      <TableHead className="py-4 text-[10px] font-black uppercase tracking-[0.2em] text-primary/50">
-                        Last Active
-                      </TableHead>
-                      <TableHead className="py-4 text-right text-[10px] font-black uppercase tracking-[0.2em] text-primary/50 pr-8">
-                        Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <AnimatePresence mode="popLayout">
-                      {adminLoading ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={5}
-                            className="py-10 text-center text-muted-foreground"
-                          >
-                            Loading admin users...
-                          </TableCell>
-                        </TableRow>
-                      ) : admins.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={5}
-                            className="py-10 text-center text-muted-foreground"
-                          >
-                            No admin users found.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        admins.map((admin, index) => (
-                          <Motion.tr
-                            key={`${admin.id || admin.email || "admin"}-${index}`}
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.03 }}
-                            className="group/row border-b border-white/5 transition-colors hover:bg-white/[0.03]"
-                          >
-                            <TableCell className="py-5">
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-primary/20 to-primary/5">
-                                  <UserCog className="h-5 w-5 text-primary/80" />
-                                </div>
-                                <div>
-                                  <div className="font-semibold text-foreground/90">
-                                    {admin.name}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {admin.email}
-                                  </div>
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {admin.isSystemRole ? (
-                                  <ShieldCheck className="h-4 w-4 text-primary" />
-                                ) : (
-                                  <Shield className="h-4 w-4 text-muted-foreground" />
-                                )}
-                                <span className="text-sm font-medium">
-                                  {admin.roleName}
+              <div className="rounded-2xl border border-border/50 overflow-hidden bg-card/30 backdrop-blur-xl shadow-lg">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent border-b border-border/50 bg-muted/20">
+                        <TableHead className="py-3.5 px-6">Admin</TableHead>
+                        <TableHead className="py-3.5 px-6">Role</TableHead>
+                        <TableHead className="py-3.5 px-6">Status</TableHead>
+                        <TableHead className="py-3.5 px-6">
+                          Last Active
+                        </TableHead>
+                        <TableHead className="py-3.5 px-6 text-center">
+                          Actions
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <AnimatePresence mode="popLayout">
+                        {adminLoading ? (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell colSpan={5} className="text-center h-48">
+                              <div className="flex flex-col items-center gap-3">
+                                <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                <span className="text-xs font-medium tracking-widest uppercase text-muted-foreground">
+                                  Loading admin users...
                                 </span>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "rounded-lg px-2 py-0.5 text-[9px] font-black uppercase tracking-widest",
-                                  admin.status === "active"
-                                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                                    : "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
-                                )}
+                          </TableRow>
+                        ) : admins.length === 0 ? (
+                          <TableRow className="hover:bg-transparent">
+                            <TableCell
+                              colSpan={5}
+                              className="text-center h-48 text-muted-foreground"
+                            >
+                              No admin users found.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          admins.map((admin, index) => (
+                            <Motion.tr
+                              key={`${admin.id || admin.email || "admin"}-${index}`}
+                              initial={{ opacity: 0, y: 5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{
+                                duration: 0.2,
+                                delay: index * 0.02,
+                              }}
+                              className="border-b border-border/30 transition-all duration-200 hover:bg-primary/5 group/row"
+                            >
+                              <TableCell className="py-4 px-6">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-primary/20 to-primary/5">
+                                    <UserCog className="h-5 w-5 text-primary/80" />
+                                  </div>
+                                  <div>
+                                    <div className="font-semibold text-foreground/90">
+                                      {admin.name}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {admin.email}
+                                    </div>
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <div className="flex items-center gap-2">
+                                  {admin.isSystemRole ? (
+                                    <ShieldCheck className="h-4 w-4 text-primary" />
+                                  ) : (
+                                    <Shield className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                  <span className="text-sm font-medium">
+                                    {admin.roleName}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="py-4 px-6">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "rounded-lg px-2 py-0.5 text-[9px] font-black uppercase tracking-widest",
+                                    admin.status === "active"
+                                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                                      : "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+                                  )}
+                                >
+                                  {titleCase(admin.status)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="py-4 px-6 text-xs text-muted-foreground tabular-nums">
+                                {admin.lastActive}
+                              </TableCell>
+                              <TableCell
+                                className="py-4 px-6 text-center"
+                                onClick={(event) => event.stopPropagation()}
                               >
-                                {titleCase(admin.status)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground tabular-nums">
-                              {admin.lastActive}
-                            </TableCell>
-                            <TableCell className="pr-8 text-right">
-                              <TooltipProvider delayDuration={120}>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <ActionTooltip label="Admin actions">
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-8 w-8 rounded-lg hover:bg-white/10"
+                                {canUpdateAdmins ||
+                                canResetPasswords ||
+                                (canDeleteAdmins && !admin.isSystemRole) ? (
+                                  <TooltipProvider delayDuration={120}>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <ActionTooltip label="Admin actions">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 rounded-lg hover:bg-white/10"
+                                          >
+                                            <MoreVertical className="h-4 w-4" />
+                                          </Button>
+                                        </ActionTooltip>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent
+                                        align="end"
+                                        className="w-56 bg-secondary/95 backdrop-blur-2xl border-white/10 shadow-2xl"
                                       >
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </ActionTooltip>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent
-                                    align="end"
-                                    className="w-56 bg-secondary/95 backdrop-blur-2xl border-white/10 shadow-2xl"
-                                  >
-                                    <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-                                      Account Actions
-                                    </DropdownMenuLabel>
-                                    {canUpdateAdmins && (
-                                      <React.Fragment key="edit">
-                                        <DropdownMenuItem
-                                          onClick={() => openEditAdmin(admin)}
-                                          className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                        >
-                                          <Edit className="h-4 w-4" /> Edit
-                                          Admin
-                                        </DropdownMenuItem>
-                                      </React.Fragment>
-                                    )}
-                                    {canUpdateAdmins && (
-                                      <React.Fragment key="assign-role">
-                                        <DropdownMenuItem
-                                          onClick={() => {
-                                            setSelectedAdmin(admin);
-                                            setAdminFormMode("edit");
-                                            setAdminFormInitial({
-                                              name: admin.name,
-                                              email: admin.email,
-                                              password: "",
-                                              roleId: admin.roleId,
-                                              status: admin.status,
-                                            });
-                                            setIsAdminFormOpen(true);
-                                          }}
-                                          className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                        >
-                                          <ArrowLeftRight className="h-4 w-4" />{" "}
-                                          Assign Role
-                                        </DropdownMenuItem>
-                                      </React.Fragment>
-                                    )}
-                                    {canResetPasswords && (
-                                      <React.Fragment key="reset-password">
-                                        <DropdownMenuItem
-                                          onClick={() => {
-                                            setSelectedAdmin(admin);
-                                            setIsResetPasswordOpen(true);
-                                          }}
-                                          className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                        >
-                                          <KeyRound className="h-4 w-4" /> Reset
-                                          Password
-                                        </DropdownMenuItem>
-                                      </React.Fragment>
-                                    )}
-                                    {canUpdateAdmins && (
-                                      <React.Fragment key="toggle-status">
-                                        <DropdownMenuItem
-                                          onClick={() =>
-                                            handleAdminStatusToggle(admin)
-                                          }
-                                          className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                        >
-                                          {admin.status === "active" ? (
-                                            <XCircle className="h-4 w-4" />
-                                          ) : (
-                                            <CheckCircle2 className="h-4 w-4" />
+                                        <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                                          Account Actions
+                                        </DropdownMenuLabel>
+                                        {canUpdateAdmins && (
+                                          <React.Fragment key="edit">
+                                            <DropdownMenuItem
+                                              onSelect={() =>
+                                                openEditAdmin(admin)
+                                              }
+                                              className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                            >
+                                              <Edit className="h-4 w-4" /> Edit
+                                              Admin
+                                            </DropdownMenuItem>
+                                          </React.Fragment>
+                                        )}
+                                        {canAssignRoles && (
+                                          <React.Fragment key="assign-role">
+                                            <DropdownMenuItem
+                                              onSelect={() => {
+                                                setSelectedAdmin(admin);
+                                                setAdminFormMode("edit");
+                                                setAdminFormInitial({
+                                                  name: admin.name,
+                                                  email: admin.email,
+                                                  password: "",
+                                                  roleId: admin.roleId,
+                                                  status: admin.status,
+                                                });
+                                                setIsAdminFormOpen(true);
+                                              }}
+                                              className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                            >
+                                              <ArrowLeftRight className="h-4 w-4" />{" "}
+                                              Assign Role
+                                            </DropdownMenuItem>
+                                          </React.Fragment>
+                                        )}
+                                        {canResetPasswords && (
+                                          <React.Fragment key="reset-password">
+                                            <DropdownMenuItem
+                                              onSelect={() => {
+                                                setSelectedAdmin(admin);
+                                                setIsResetPasswordOpen(true);
+                                              }}
+                                              className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                            >
+                                              <KeyRound className="h-4 w-4" />{" "}
+                                              Reset Password
+                                            </DropdownMenuItem>
+                                          </React.Fragment>
+                                        )}
+                                        {canUpdateAdmins && (
+                                          <React.Fragment key="toggle-status">
+                                            <DropdownMenuItem
+                                              onSelect={() =>
+                                                handleAdminStatusToggle(admin)
+                                              }
+                                              className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                            >
+                                              {admin.status === "active" ? (
+                                                <XCircle className="h-4 w-4" />
+                                              ) : (
+                                                <CheckCircle2 className="h-4 w-4" />
+                                              )}
+                                              {admin.status === "active"
+                                                ? "Deactivate"
+                                                : "Activate"}
+                                            </DropdownMenuItem>
+                                          </React.Fragment>
+                                        )}
+                                        {canDeleteAdmins &&
+                                          !admin.isSystemRole && (
+                                            <React.Fragment key="delete">
+                                              <DropdownMenuSeparator className="bg-white/5" />
+                                              <DropdownMenuItem
+                                                onSelect={() =>
+                                                  setAdminDeleteTarget(admin)
+                                                }
+                                                className="gap-2 py-2 text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"
+                                              >
+                                                <Trash2 className="h-4 w-4" />{" "}
+                                                Delete Admin
+                                              </DropdownMenuItem>
+                                            </React.Fragment>
                                           )}
-                                          {admin.status === "active"
-                                            ? "Deactivate"
-                                            : "Activate"}
-                                        </DropdownMenuItem>
-                                      </React.Fragment>
-                                    )}
-                                    {canDeleteAdmins && !admin.isSystemRole && (
-                                      <React.Fragment key="delete">
-                                        <DropdownMenuSeparator className="bg-white/5" />
-                                        <DropdownMenuItem
-                                          onClick={() =>
-                                            setAdminDeleteTarget(admin)
-                                          }
-                                          className="gap-2 py-2 text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"
-                                        >
-                                          <Trash2 className="h-4 w-4" /> Delete
-                                          Admin
-                                        </DropdownMenuItem>
-                                      </React.Fragment>
-                                    )}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </TooltipProvider>
-                            </TableCell>
-                          </Motion.tr>
-                        ))
-                      )}
-                    </AnimatePresence>
-                  </TableBody>
-                </Table>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </TooltipProvider>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">
+                                    No actions
+                                  </span>
+                                )}
+                              </TableCell>
+                            </Motion.tr>
+                          ))
+                        )}
+                      </AnimatePresence>
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
 
               {adminPagination.total_pages > 1 && (
-                <Pagination
-                  currentPage={adminPagination.page}
-                  totalPages={adminPagination.total_pages}
-                  onPageChange={setAdminPage}
-                  totalItems={adminPagination.total}
-                  itemsPerPage={adminPagination.limit}
-                  itemName="admins"
-                />
+                <div className="border-t border-border/50 bg-card/20 backdrop-blur-sm">
+                  <Pagination
+                    currentPage={adminPagination.page}
+                    totalPages={adminPagination.total_pages}
+                    onPageChange={setAdminPage}
+                    totalItems={adminPagination.total}
+                    itemsPerPage={adminPagination.limit}
+                    itemName="admins"
+                  />
+                </div>
               )}
             </CardContent>
           </Card>
@@ -1351,7 +1413,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
         {canManageRoles && (
           <TabsContent value="roles" className="space-y-6">
             <Card className="relative overflow-hidden border-white/10 bg-card/40 backdrop-blur-xl shadow-2xl">
-              <div className="absolute top-0 right-0 -mr-24 -mt-24 h-80 w-80 rounded-full bg-primary/10 blur-[100px] opacity-50" />
+              <div className="absolute top-0 right-0 -mr-24 -mt-24 h-80 rounded-full bg-primary/10 blur-[100px] opacity-50" />
               <CardHeader className="relative z-10">
                 <CardTitle>Role Management</CardTitle>
                 <CardDescription>
@@ -1373,203 +1435,156 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                       className="pl-10"
                     />
                   </div>
-                  <div className="flex items-center justify-end gap-3">
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-widest"
-                    >
-                      {groupedPermissions.length} permission groups
-                    </Badge>
-                  </div>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-                  <div className="overflow-hidden rounded-2xl border border-white/10">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-b border-white/5 bg-black/20 hover:bg-black/20">
-                          <TableHead className="py-4 text-[10px] font-black uppercase tracking-[0.2em] text-primary/50">
-                            Role
-                          </TableHead>
-                          <TableHead className="py-4 text-[10px] font-black uppercase tracking-[0.2em] text-primary/50">
-                            Permissions
-                          </TableHead>
-                          <TableHead className="py-4 text-[10px] font-black uppercase tracking-[0.2em] text-primary/50">
-                            Type
-                          </TableHead>
-                          <TableHead className="py-4 text-right text-[10px] font-black uppercase tracking-[0.2em] text-primary/50 pr-8">
-                            Actions
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {roleLoading ? (
-                          <TableRow>
-                            <TableCell
-                              colSpan={4}
-                              className="py-10 text-center text-muted-foreground"
-                            >
-                              Loading roles...
-                            </TableCell>
+                <div className="grid gap-4">
+                  <div className="rounded-2xl border border-border/50 overflow-hidden bg-card/30 backdrop-blur-xl shadow-lg">
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="hover:bg-transparent border-b border-border/50 bg-muted/20">
+                            <TableHead className="py-3.5 px-6">Role</TableHead>
+                            <TableHead className="py-3.5 px-6">
+                              Permissions
+                            </TableHead>
+                            <TableHead className="py-3.5 px-6">Type</TableHead>
+                            <TableHead className="py-3.5 px-6 text-center">
+                              Actions
+                            </TableHead>
                           </TableRow>
-                        ) : roles.length === 0 ? (
-                          <TableRow>
-                            <TableCell
-                              colSpan={4}
-                              className="py-10 text-center text-muted-foreground"
-                            >
-                              No roles found.
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          roles.map((role, index) => (
-                            <Motion.tr
-                              key={`${role.id || role.name || "role"}-${index}`}
-                              initial={{ opacity: 0, y: 8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: index * 0.03 }}
-                              className="group/row border-b border-white/5 transition-colors hover:bg-white/[0.03]"
-                            >
-                              <TableCell className="py-5">
-                                <div className="space-y-1">
-                                  <div className="font-semibold text-foreground/90">
-                                    {role.name}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {role.description || "No description"}
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant="outline"
-                                  className="rounded-full border-white/10 bg-white/5 px-3 py-1 text-xs"
-                                >
-                                  {role.permissionCount} permissions
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "rounded-lg px-2 py-0.5 text-[9px] font-black uppercase tracking-widest",
-                                    role.isSystem
-                                      ? "border-primary/20 bg-primary/10 text-primary"
-                                      : "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
-                                  )}
-                                >
-                                  {formatRoleBadge(role)}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="pr-8 text-right">
-                                <TooltipProvider delayDuration={120}>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <ActionTooltip label="Role actions">
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-8 w-8 rounded-lg hover:bg-white/10"
-                                        >
-                                          <MoreVertical className="h-4 w-4" />
-                                        </Button>
-                                      </ActionTooltip>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent
-                                      align="end"
-                                      className="w-52 bg-secondary/95 backdrop-blur-2xl border-white/10 shadow-2xl"
-                                    >
-                                      <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-                                        Role Actions
-                                      </DropdownMenuLabel>
-                                      <DropdownMenuItem
-                                        disabled={role.isSystem}
-                                        onClick={() => openEditRole(role)}
-                                        className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
-                                      >
-                                        <Edit className="h-4 w-4" /> Edit Role
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        disabled={role.isSystem}
-                                        onClick={() =>
-                                          setRoleDeleteTarget(role)
-                                        }
-                                        className="gap-2 py-2 text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"
-                                      >
-                                        <Trash2 className="h-4 w-4" /> Delete
-                                        Role
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </TooltipProvider>
-                              </TableCell>
-                            </Motion.tr>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  <div className="space-y-4 rounded-2xl border border-white/10 bg-card/50 p-4">
-                    <div>
-                      <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                        Permission Viewer
-                      </h3>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        This section renders the permission list returned by GET
-                        /api/v1/admin/roles/permissions/list.
-                      </p>
-                    </div>
-
-                    <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1 custom-scrollbar">
-                      {groupedPermissions.map((group) => (
-                        <div
-                          key={group.label}
-                          className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-2"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <h4 className="font-semibold text-foreground capitalize">
-                                {group.label}
-                              </h4>
-                              <p className="text-xs text-muted-foreground">
-                                {group.permissions.length} keys
-                              </p>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            {group.permissions.map((permission) => (
-                              <div
-                                key={permission.key}
-                                className="rounded-xl border border-white/5 bg-white/5 p-3"
+                        </TableHeader>
+                        <TableBody>
+                          {roleLoading ? (
+                            <TableRow className="hover:bg-transparent">
+                              <TableCell
+                                colSpan={4}
+                                className="text-center h-48"
                               >
-                                <div className="text-sm font-medium text-foreground">
-                                  {permission.name}
+                                <div className="flex flex-col items-center gap-3">
+                                  <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                  <span className="text-xs font-medium tracking-widest uppercase text-muted-foreground">
+                                    Loading roles...
+                                  </span>
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {permission.description || permission.key}
-                                </div>
-                                <div className="mt-2 inline-flex rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-primary/70">
-                                  {permission.key}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                              </TableCell>
+                            </TableRow>
+                          ) : roles.length === 0 ? (
+                            <TableRow className="hover:bg-transparent">
+                              <TableCell
+                                colSpan={4}
+                                className="text-center h-48 text-muted-foreground"
+                              >
+                                No roles found.
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            roles.map((role, index) => (
+                              <Motion.tr
+                                key={`${role.id || role.name || "role"}-${index}`}
+                                initial={{ opacity: 0, y: 5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{
+                                  duration: 0.2,
+                                  delay: index * 0.02,
+                                }}
+                                className="border-b border-border/30 transition-all duration-200 hover:bg-primary/5 group/row"
+                              >
+                                <TableCell className="py-4 px-6">
+                                  <div className="space-y-1">
+                                    <div className="font-semibold text-foreground/90">
+                                      {role.name}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {role.description || "No description"}
+                                    </div>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <Badge
+                                    variant="outline"
+                                    className="rounded-full border-white/10 bg-white/5 px-3 py-1 text-xs"
+                                  >
+                                    {role.permissionCount} permissions
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="py-4 px-6">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "rounded-lg px-2 py-0.5 text-[9px] font-black uppercase tracking-widest",
+                                      role.isSystem
+                                        ? "border-primary/20 bg-primary/10 text-primary"
+                                        : "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+                                    )}
+                                  >
+                                    {formatRoleBadge(role)}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell
+                                  className="py-4 px-6 text-center"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <TooltipProvider delayDuration={120}>
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <ActionTooltip label="Role actions">
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 rounded-lg hover:bg-white/10"
+                                          >
+                                            <MoreVertical className="h-4 w-4" />
+                                          </Button>
+                                        </ActionTooltip>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent
+                                        align="end"
+                                        className="w-52 bg-secondary/95 backdrop-blur-2xl border-white/10 shadow-2xl"
+                                      >
+                                        <DropdownMenuLabel className="px-2 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                                          Role Actions
+                                        </DropdownMenuLabel>
+                                        <DropdownMenuItem
+                                          disabled={role.isSystem}
+                                          onSelect={() => openEditRole(role)}
+                                          className="gap-2 py-2 focus:bg-primary/10 focus:text-primary"
+                                        >
+                                          <Edit className="h-4 w-4" /> Edit Role
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          disabled={role.isSystem}
+                                          onSelect={() =>
+                                            setRoleDeleteTarget(role)
+                                          }
+                                          className="gap-2 py-2 text-rose-400 focus:bg-rose-500/10 focus:text-rose-400"
+                                        >
+                                          <Trash2 className="h-4 w-4" /> Delete
+                                          Role
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </TooltipProvider>
+                                </TableCell>
+                              </Motion.tr>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
                     </div>
                   </div>
                 </div>
 
                 {rolePagination.total_pages > 1 && (
-                  <Pagination
-                    currentPage={rolePagination.page}
-                    totalPages={rolePagination.total_pages}
-                    onPageChange={setRolePage}
-                    totalItems={rolePagination.total}
-                    itemsPerPage={rolePagination.limit}
-                    itemName="roles"
-                  />
+                  <div className="border-t border-border/50 bg-card/20 backdrop-blur-sm">
+                    <Pagination
+                      currentPage={rolePagination.page}
+                      totalPages={rolePagination.total_pages}
+                      onPageChange={setRolePage}
+                      totalItems={rolePagination.total}
+                      itemsPerPage={rolePagination.limit}
+                      itemName="roles"
+                    />
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -1583,6 +1598,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
         mode={adminFormMode}
         initialValue={adminFormInitial}
         roleOptions={roleOptions}
+        canAssignRole={canAssignRoles}
         onSubmit={handleAdminFormSubmit}
       />
 
