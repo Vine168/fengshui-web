@@ -63,6 +63,7 @@ import { cn } from "./ui/utils";
 import { PermissionDenied } from "./PermissionDenied";
 import { HttpError } from "../../lib/http";
 import { useAdminAccess } from "../../hooks/useAdminAccess";
+import { refreshAdminAccessContext } from "../../services/auth.service";
 import {
   addAdminUser,
   changeAdminStatus,
@@ -71,6 +72,7 @@ import {
   removeAdminUser,
   resetAdminPassword,
   setAdminRole,
+  setAdminRoleFromRolesModule,
   type AdminUserRow,
 } from "../../services/adminUsers.service";
 import {
@@ -96,6 +98,12 @@ type RoleFormState = {
   name: string;
   description: string;
   permissionKeys: string[];
+};
+
+type RoleOption = {
+  id: string;
+  name: string;
+  isSystem: boolean;
 };
 
 type PermissionGroup = {
@@ -208,7 +216,7 @@ function AdminUserFormDialog({
   onOpenChange: (open: boolean) => void;
   mode: "create" | "edit";
   initialValue: AdminFormState;
-  roleOptions: Array<{ id: string; name: string }>;
+  roleOptions: RoleOption[];
   canAssignRole: boolean;
   onSubmit: (value: AdminFormState) => Promise<void>;
 }) {
@@ -225,8 +233,7 @@ function AdminUserFormDialog({
     if (
       !form.name.trim() ||
       !form.email.trim() ||
-      (mode === "create" && !form.password.trim()) ||
-      !form.roleId
+      (mode === "create" && !form.password.trim())
     ) {
       toast.error("Please complete all required fields");
       return;
@@ -289,6 +296,7 @@ function AdminUserFormDialog({
             </label>
             <Input
               type="email"
+              disabled={mode === "edit"}
               value={form.email}
               onChange={(event) =>
                 setForm((current) => ({
@@ -717,7 +725,7 @@ function RoleFormDialog({
 export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
   initialTab = "admins",
 }) => {
-  const { hasPermission, isSuperUser } = useAdminAccess();
+  const { admin: currentAdmin, hasPermission, isSuperUser } = useAdminAccess();
   const canManageRoles = hasPermission("roles.manage");
   const canCreateAdmins = hasPermission("admin_users.create");
   const canUpdateAdmins = hasPermission("admin_users.update");
@@ -884,7 +892,12 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
   }, [activeTab, canManageRoles]);
 
   const roleOptions = useMemo(
-    () => roles.map((role) => ({ id: role.id, name: role.name })),
+    () =>
+      roles.map((role) => ({
+        id: role.id,
+        name: role.name,
+        isSystem: role.isSystem,
+      })),
     [roles],
   );
   const groupedPermissions = useMemo(
@@ -896,7 +909,6 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
     setAdminFormMode("create");
     setAdminFormInitial({
       ...DEFAULT_ADMIN_FORM,
-      roleId: roleOptions[0]?.id || "",
     });
     setSelectedAdmin(null);
     setIsAdminFormOpen(true);
@@ -922,6 +934,30 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
     setIsRoleFormOpen(true);
   };
 
+  const resolveSelectedRole = (roleId: string) => {
+    return roleOptions.find((option) => option.id === roleId) || null;
+  };
+
+  const assignRoleForSelection = async (adminId: string, roleId: string) => {
+    const selectedRole = resolveSelectedRole(roleId);
+
+    if (!selectedRole) {
+      return;
+    }
+
+    if (selectedRole.isSystem) {
+      await setAdminRole(adminId, {
+        role: selectedRole.name.trim().toLowerCase(),
+      });
+      return;
+    }
+
+    await setAdminRoleFromRolesModule(adminId, {
+      role: "editor",
+      role_id: selectedRole.id,
+    });
+  };
+
   const openEditRole = (role: RoleRow) => {
     setRoleFormMode("edit");
     setRoleFormInitial({
@@ -935,18 +971,21 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
 
   const handleAdminFormSubmit = async (value: AdminFormState) => {
     if (adminFormMode === "create") {
-      await addAdminUser({
+      const created = await addAdminUser({
         name: value.name,
         email: value.email,
         password: value.password,
-        role_id: value.roleId || undefined,
-        status: value.status,
       });
-      toast.success("Admin user created");
+
+      const createdId = (created as { data?: { id?: string } })?.data?.id;
+      if (createdId && value.roleId && canAssignRoles) {
+        await assignRoleForSelection(createdId, value.roleId);
+      }
+
+      toast.success("System user created");
     } else if (selectedAdmin) {
       const profileChanged =
         value.name !== selectedAdmin.name ||
-        value.email !== selectedAdmin.email ||
         value.status !== selectedAdmin.status;
 
       const roleChanged = value.roleId && value.roleId !== selectedAdmin.roleId;
@@ -954,7 +993,6 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
       if (profileChanged) {
         await editAdminUser(selectedAdmin.id, {
           name: value.name,
-          email: value.email,
           status: value.status,
         });
       }
@@ -965,7 +1003,18 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
       }
 
       if (roleChanged) {
-        await setAdminRole(selectedAdmin.id, { role_id: value.roleId });
+        await assignRoleForSelection(selectedAdmin.id, value.roleId);
+
+        const currentAdminId =
+          currentAdmin &&
+          typeof currentAdmin === "object" &&
+          "id" in currentAdmin
+            ? String((currentAdmin as { id?: unknown }).id || "")
+            : "";
+
+        if (currentAdminId && currentAdminId === selectedAdmin.id) {
+          await refreshAdminAccessContext();
+        }
       }
 
       if (profileChanged || roleChanged) {
@@ -1239,15 +1288,30 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                                 </div>
                               </TableCell>
                               <TableCell className="py-4 px-6">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-3">
                                   {admin.isSystemRole ? (
                                     <ShieldCheck className="h-4 w-4 text-primary" />
                                   ) : (
                                     <Shield className="h-4 w-4 text-muted-foreground" />
                                   )}
-                                  <span className="text-sm font-medium">
-                                    {admin.roleName}
-                                  </span>
+                                  <div className="space-y-1">
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest",
+                                        admin.isSystemRole
+                                          ? "border-primary/20 bg-primary/10 text-primary"
+                                          : "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+                                      )}
+                                    >
+                                      {admin.isSystemRole
+                                        ? "System Role"
+                                        : "Custom Role"}
+                                    </Badge>
+                                    <span className="block text-sm font-medium text-foreground/90">
+                                      {admin.roleName}
+                                    </span>
+                                  </div>
                                 </div>
                               </TableCell>
                               <TableCell className="py-4 px-6">

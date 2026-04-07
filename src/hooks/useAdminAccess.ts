@@ -4,6 +4,7 @@ import { getStoredPermissions, getStoredUser } from '../services/auth.service';
 
 const FULL_ACCESS_ROLES = new Set(['admin', 'super_admin', 'super-admin', 'super admin']);
 const FULL_ACCESS_PERMISSION = '*';
+const ACCESS_UPDATED_EVENT = 'admin-access-updated';
 
 function collectPermissionKeys(source: unknown): string[] {
   if (!source || typeof source !== 'object') {
@@ -93,8 +94,21 @@ export function useAdminAccess() {
 
     loadAccess();
 
+    const handleAccessUpdate = () => {
+      const storedAdmin = getStoredUser();
+      const storedPermissions = getStoredPermissions();
+      setAdmin(storedAdmin);
+      setPermissions([...new Set([...storedPermissions, ...collectPermissionKeys(storedAdmin)])]);
+      setIsLoadingAccess(false);
+    };
+
+    window.addEventListener(ACCESS_UPDATED_EVENT, handleAccessUpdate);
+    window.addEventListener('storage', handleAccessUpdate);
+
     return () => {
       active = false;
+      window.removeEventListener(ACCESS_UPDATED_EVENT, handleAccessUpdate);
+      window.removeEventListener('storage', handleAccessUpdate);
     };
   }, []);
 

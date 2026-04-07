@@ -1,13 +1,32 @@
-import { login, logout, type LoginInput } from '../api/auth.api';
-import { logoutSettings } from './settings.service';
+import { login, logout, me, type LoginInput } from '../api/auth.api';
+import { logoutSettings } from './settingsGeneral.service';
+
+const ACCESS_UPDATED_EVENT = 'admin-access-updated';
+
+function notifyAccessUpdated() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(ACCESS_UPDATED_EVENT));
+  }
+}
+
+export function storeAdminAccess(admin: unknown, permissions: string[]) {
+  localStorage.setItem('admin_user', JSON.stringify(admin));
+  localStorage.setItem('admin_permissions', JSON.stringify(permissions || []));
+  notifyAccessUpdated();
+}
 
 export async function signIn(payload: LoginInput) {
   const response = await login(payload);
   localStorage.setItem('admin_token', response.data.access_token);
-  localStorage.setItem('admin_user', JSON.stringify(response.data.admin));
-  localStorage.setItem('admin_permissions', JSON.stringify(response.data.permissions || []));
+  storeAdminAccess(response.data.admin, response.data.permissions || []);
   localStorage.setItem('isLoggedIn', 'true');
   return response.data.admin;
+}
+
+export async function refreshAdminAccessContext() {
+  const response = await me();
+  storeAdminAccess(response.data.admin, response.data.permissions || []);
+  return response.data;
 }
 
 export async function signOut() {
@@ -26,6 +45,7 @@ export async function signOut() {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem('isLoggedIn');
+    notifyAccessUpdated();
   }
 }
 

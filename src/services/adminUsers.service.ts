@@ -1,5 +1,6 @@
 import {
   assignRoleToAdminUser,
+  assignRoleToAdminUserFromRolesModule,
   createAdminUser,
   deleteAdminUserById,
   getAdminUserById,
@@ -43,10 +44,10 @@ function normalizeAdminUser(
 
   const roleId = record.role_id || record.roleId || role?.id || '';
   const resolvedRoleName =
+    roleFromString ||
     record.role_name ||
     record.roleName ||
     role?.name ||
-    roleFromString ||
     (roleId ? roleNameById.get(roleId) : undefined) ||
     (roleId ? 'Assigned Role' : 'Unassigned');
 
@@ -120,4 +121,11 @@ export async function removeAdminUser(id: string) {
 
 export async function setAdminRole(id: string, payload: AssignRoleInput) {
   return assignRoleToAdminUser(id, payload);
+}
+
+export async function setAdminRoleFromRolesModule(
+  id: string,
+  payload: AssignRoleInput,
+) {
+  return assignRoleToAdminUserFromRolesModule(id, payload);
 }

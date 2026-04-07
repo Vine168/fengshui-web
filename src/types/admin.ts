@@ -78,5 +78,6 @@ export interface ResetAdminPasswordInput {
 }
 
 export interface AssignRoleInput {
-  role_id: string;
+  role_id?: string;
+  role?: string;
 }
