@@ -269,11 +269,6 @@ function AdminUserFormDialog({
             <ShieldCheck className="w-6 h-6 text-primary" />
             {mode === "create" ? "Create Admin User" : "Edit Admin User"}
           </DialogTitle>
-          <DialogDescription>
-            {mode === "create"
-              ? "Create the admin account first, then attach a role so permissions come from the role."
-              : "Update the admin profile and move the user to a different role if needed."}
-          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
@@ -559,22 +554,19 @@ function RoleFormDialog({
 
   return (
     <DialogRoot open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden bg-card/95 backdrop-blur-2xl border-white/10">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-            <Shield className="w-6 h-6 text-primary" />
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden border-border/60 bg-card">
+        <DialogHeader className="space-y-2 border-b border-border/50 pb-4">
+          <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+            <Shield className="w-5 h-5 text-primary" />
             {mode === "create" ? "Create Role" : "Edit Role"}
           </DialogTitle>
-          <DialogDescription>
-            Pick the permissions this role should carry. System roles remain
-            read-only.
-          </DialogDescription>
+
         </DialogHeader>
 
-        <div className="grid gap-4 overflow-y-auto max-h-[65vh] py-2 pr-1">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium text-foreground/80">
+        <div className="max-h-[65vh] overflow-y-auto py-4 pr-1 space-y-4">
+          <div className="grid gap-4">
+            <div className="gap-2 px-1">
+              <label className="text-sm font-medium text-foreground">
                 Role Name
               </label>
               <Input
@@ -586,10 +578,11 @@ function RoleFormDialog({
                   }))
                 }
                 placeholder="e.g. Content Editor"
+                className="h-10"
               />
             </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium text-foreground/80">
+            <div className="grid gap-2 px-1">
+              <label className="text-sm font-medium text-foreground">
                 Description
               </label>
               <Textarea
@@ -606,19 +599,19 @@ function RoleFormDialog({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4 space-y-4">
-            <div className="flex items-center justify-between gap-3">
+          <div className="rounded-xl border border-border/60 bg-muted/10 p-4 space-y-4">
+            <div className="flex items-center justify-between gap-3 border-b border-border/50 pb-3">
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Permission Checklist
+                <h3 className="text-sm font-semibold text-foreground">
+                  Permissions
                 </h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Selected keys are saved in permission_keys.
+                  Grant only what this role needs.
                 </p>
               </div>
               <Badge
                 variant="outline"
-                className="rounded-full border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-widest"
+                className="rounded-md border-border/60 bg-card px-2.5 py-1 text-xs"
               >
                 {form.permissionKeys.length} selected
               </Badge>
@@ -628,7 +621,7 @@ function RoleFormDialog({
               {groupedPermissions.map((group) => (
                 <div
                   key={group.label}
-                  className="rounded-2xl border border-white/10 bg-card/50 p-4 space-y-3"
+                  className="rounded-lg border border-border/60 bg-card p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div>
@@ -641,7 +634,7 @@ function RoleFormDialog({
                     </div>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       className="h-8 px-3 text-xs"
                       onClick={() => {
@@ -665,15 +658,15 @@ function RoleFormDialog({
                         }));
                       }}
                     >
-                      Toggle Group
+                      Select All
                     </Button>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {group.permissions.map((permission) => (
                       <label
                         key={permission.key}
-                        className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/5 bg-black/10 p-3 transition-colors hover:bg-black/20"
+                        className="flex cursor-pointer items-start gap-3 rounded-md border border-border/50 bg-background/60 p-3 transition-colors hover:bg-muted/30"
                       >
                         <Checkbox
                           checked={form.permissionKeys.includes(permission.key)}
@@ -683,10 +676,10 @@ function RoleFormDialog({
                           className="mt-0.5"
                         />
                         <span className="space-y-1">
-                          <span className="block text-sm font-medium text-foreground">
+                          {/* <span className="block text-sm font-medium text-foreground">
                             {permission.name}
-                          </span>
-                          <span className="block text-xs text-muted-foreground">
+                          </span> */}
+                          <span className="block text-sm font-medium text-foreground">
                             {permission.description || permission.key}
                           </span>
                         </span>
@@ -699,11 +692,9 @@ function RoleFormDialog({
           </div>
         </div>
 
-        <DialogFooter className="gap-3">
+        <DialogFooter className="gap-3 border-t border-border/50 pt-4">
           <DialogClose asChild>
-            <Button variant="ghost" className="hover:bg-white/5">
-              Cancel
-            </Button>
+            <Button variant="ghost">Cancel</Button>
           </DialogClose>
           <Button
             variant="primary"
@@ -900,6 +891,26 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
       })),
     [roles],
   );
+
+  const adminRoleFilterOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+
+    for (const role of roles) {
+      if (role.id) {
+        byId.set(role.id, role.name);
+      }
+    }
+
+    for (const admin of admins) {
+      if (admin.roleId && !byId.has(admin.roleId)) {
+        byId.set(admin.roleId, admin.roleName);
+      }
+    }
+
+    return Array.from(byId.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [admins, roles]);
   const groupedPermissions = useMemo(
     () => groupPermissions(permissions),
     [permissions],
@@ -975,6 +986,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
         name: value.name,
         email: value.email,
         password: value.password,
+        role: "editor",
       });
 
       const createdId = (created as { data?: { id?: string } })?.data?.id;
@@ -1095,17 +1107,9 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2 max-w-2xl">
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-primary">
-            <Users className="h-3.5 w-3.5" />
-            Access Control
-          </div>
           <h2 className="text-3xl font-bold tracking-tight text-foreground/90">
             Admin User Management
           </h2>
-          <p className="text-muted-foreground">
-            Manage admin accounts, assign roles, and control permission-driven
-            access from one place.
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -1163,9 +1167,6 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
             <div className="absolute top-0 right-0 -mr-24 -mt-24 h-80 w-80 rounded-full bg-primary/10 blur-[100px] opacity-50" />
             <CardHeader className="relative z-10">
               <CardTitle>Admin Users</CardTitle>
-              <CardDescription>
-                Search, filter, create, and manage admin accounts.
-              </CardDescription>
             </CardHeader>
             <CardContent className="relative z-10 space-y-4">
               <div className="grid gap-3 lg:grid-cols-4">
@@ -1211,7 +1212,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                   <option key="all-roles" value="">
                     All roles
                   </option>
-                  {roles.map((role, index) => (
+                  {adminRoleFilterOptions.map((role, index) => (
                     <option
                       key={`${role.id || "role"}-${index}`}
                       value={role.id}
@@ -1228,11 +1229,9 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                     <TableHeader>
                       <TableRow className="hover:bg-transparent border-b border-border/50 bg-muted/20">
                         <TableHead className="py-3.5 px-6">Admin</TableHead>
+                        <TableHead className="py-3.5 px-6">Email</TableHead>
                         <TableHead className="py-3.5 px-6">Role</TableHead>
                         <TableHead className="py-3.5 px-6">Status</TableHead>
-                        <TableHead className="py-3.5 px-6">
-                          Last Active
-                        </TableHead>
                         <TableHead className="py-3.5 px-6 text-center">
                           Actions
                         </TableHead>
@@ -1242,7 +1241,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                       <AnimatePresence mode="popLayout">
                         {adminLoading ? (
                           <TableRow className="hover:bg-transparent">
-                            <TableCell colSpan={5} className="text-center h-48">
+                            <TableCell colSpan={6} className="text-center h-48">
                               <div className="flex flex-col items-center gap-3">
                                 <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                                 <span className="text-xs font-medium tracking-widest uppercase text-muted-foreground">
@@ -1254,7 +1253,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                         ) : admins.length === 0 ? (
                           <TableRow className="hover:bg-transparent">
                             <TableCell
-                              colSpan={5}
+                              colSpan={6}
                               className="text-center h-48 text-muted-foreground"
                             >
                               No admin users found.
@@ -1281,11 +1280,11 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                                     <div className="font-semibold text-foreground/90">
                                       {admin.name}
                                     </div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {admin.email}
-                                    </div>
                                   </div>
                                 </div>
+                              </TableCell>
+                              <TableCell className="py-4 px-6 text-sm text-foreground/80">
+                                {admin.email}
                               </TableCell>
                               <TableCell className="py-4 px-6">
                                 <div className="flex items-center gap-3">
@@ -1295,19 +1294,6 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                                     <Shield className="h-4 w-4 text-muted-foreground" />
                                   )}
                                   <div className="space-y-1">
-                                    <Badge
-                                      variant="outline"
-                                      className={cn(
-                                        "rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest",
-                                        admin.isSystemRole
-                                          ? "border-primary/20 bg-primary/10 text-primary"
-                                          : "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
-                                      )}
-                                    >
-                                      {admin.isSystemRole
-                                        ? "System Role"
-                                        : "Custom Role"}
-                                    </Badge>
                                     <span className="block text-sm font-medium text-foreground/90">
                                       {admin.roleName}
                                     </span>
@@ -1326,9 +1312,6 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                                 >
                                   {titleCase(admin.status)}
                                 </Badge>
-                              </TableCell>
-                              <TableCell className="py-4 px-6 text-xs text-muted-foreground tabular-nums">
-                                {admin.lastActive}
                               </TableCell>
                               <TableCell
                                 className="py-4 px-6 text-center"
@@ -1480,10 +1463,6 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
               <div className="absolute top-0 right-0 -mr-24 -mt-24 h-80 rounded-full bg-primary/10 blur-[100px] opacity-50" />
               <CardHeader className="relative z-10">
                 <CardTitle>Role Management</CardTitle>
-                <CardDescription>
-                  Create and maintain roles using backend permissions from the
-                  permission list endpoint.
-                </CardDescription>
               </CardHeader>
               <CardContent className="relative z-10 space-y-4">
                 <div className="grid gap-3 md:grid-cols-2">
@@ -1509,6 +1488,9 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                           <TableRow className="hover:bg-transparent border-b border-border/50 bg-muted/20">
                             <TableHead className="py-3.5 px-6">Role</TableHead>
                             <TableHead className="py-3.5 px-6">
+                              Description
+                            </TableHead>
+                            <TableHead className="py-3.5 px-6">
                               Permissions
                             </TableHead>
                             <TableHead className="py-3.5 px-6">Type</TableHead>
@@ -1521,7 +1503,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                           {roleLoading ? (
                             <TableRow className="hover:bg-transparent">
                               <TableCell
-                                colSpan={4}
+                                colSpan={5}
                                 className="text-center h-48"
                               >
                                 <div className="flex flex-col items-center gap-3">
@@ -1535,7 +1517,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                           ) : roles.length === 0 ? (
                             <TableRow className="hover:bg-transparent">
                               <TableCell
-                                colSpan={4}
+                                colSpan={5}
                                 className="text-center h-48 text-muted-foreground"
                               >
                                 No roles found.
@@ -1554,14 +1536,12 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                                 className="border-b border-border/30 transition-all duration-200 hover:bg-primary/5 group/row"
                               >
                                 <TableCell className="py-4 px-6">
-                                  <div className="space-y-1">
-                                    <div className="font-semibold text-foreground/90">
-                                      {role.name}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {role.description || "No description"}
-                                    </div>
+                                  <div className="font-semibold text-foreground/90">
+                                    {role.name}
                                   </div>
+                                </TableCell>
+                                <TableCell className="py-4 px-6 text-xs text-muted-foreground">
+                                  {role.description || "No description"}
                                 </TableCell>
                                 <TableCell className="py-4 px-6">
                                   <Badge

@@ -44,11 +44,11 @@ function normalizeAdminUser(
 
   const roleId = record.role_id || record.roleId || role?.id || '';
   const resolvedRoleName =
-    roleFromString ||
     record.role_name ||
     record.roleName ||
     role?.name ||
     (roleId ? roleNameById.get(roleId) : undefined) ||
+    roleFromString ||
     (roleId ? 'Assigned Role' : 'Unassigned');
 
   return {
@@ -59,7 +59,7 @@ function normalizeAdminUser(
     roleId,
     roleName: resolvedRoleName,
     isSystemRole: Boolean(
-      record.is_system || role?.is_system || resolvedRoleName === 'admin',
+      record.is_system || role?.is_system || resolvedRoleName.toLowerCase() === 'admin',
     ),
     lastActive: record.last_active_at || record.updated_at || record.created_at || 'Never',
     rolePermissionKeys: role?.permission_keys || [],

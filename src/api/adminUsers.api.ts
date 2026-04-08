@@ -1,5 +1,6 @@
 import { http } from '../lib/http';
 import type {
+  AdminUserRecord,
   AdminUsersListResponse,
   AssignRoleInput,
   CreateAdminUserInput,
@@ -35,7 +36,7 @@ export async function getAdminUsers(params: AdminUsersListParams = {}) {
 
 export async function createAdminUser(payload: CreateAdminUserInput) {
   const requestPayload: Record<string, unknown> = {
-    role: 'editor',
+    role: payload.role || 'editor',
     email: payload.email,
     password: payload.password,
   };
@@ -44,14 +45,14 @@ export async function createAdminUser(payload: CreateAdminUserInput) {
     requestPayload.name = payload.name.trim();
   }
 
-  return http.post<{ code: number; message: string; data: { id: string } }>(
+  return http.post<{ code: number; message: string; data: AdminUserRecord }>(
     '/admin/system-users',
     requestPayload,
   );
 }
 
 export async function getAdminUserById(id: string) {
-  return http.get<{ code: number; message: string; data: unknown }>(
+  return http.get<{ code: number; message: string; data: AdminUserRecord }>(
     `/admin/system-users/${id}`,
   );
 }
@@ -63,13 +64,25 @@ export async function updateAdminUserById(id: string, payload: UpdateAdminUserIn
     requestPayload.name = payload.name;
   }
 
+  if (typeof payload.email === 'string') {
+    requestPayload.email = payload.email;
+  }
+
+  if (typeof payload.password === 'string' && payload.password.trim()) {
+    requestPayload.password = payload.password.trim();
+  }
+
+  if (typeof payload.role === 'string' && payload.role.trim()) {
+    requestPayload.role = payload.role.trim();
+  }
+
   if (typeof payload.is_active === 'boolean') {
     requestPayload.is_active = payload.is_active;
   } else if (payload.status) {
     requestPayload.is_active = payload.status === 'active';
   }
 
-  return http.put<{ code: number; message: string; data: unknown }>(
+  return http.put<{ code: number; message: string; data: AdminUserRecord }>(
     `/admin/system-users/${id}`,
     requestPayload,
   );
@@ -80,7 +93,7 @@ export async function resetAdminPasswordById(id: string, payload: ResetAdminPass
     ? { password: payload.password.trim() }
     : undefined;
 
-  return http.post<{ code: number; message: string; data: unknown }>(
+  return http.post<{ code: number; message: string; data: AdminUserRecord }>(
     `/admin/system-users/${id}/reset-password`,
     requestPayload,
   );
@@ -103,7 +116,7 @@ export async function assignRoleToAdminUser(id: string, payload: AssignRoleInput
     requestPayload.role_id = payload.role_id.trim();
   }
 
-  return http.patch<{ code: number; message: string; data: unknown }>(
+  return http.patch<{ code: number; message: string; data: AdminUserRecord }>(
     `/admin/system-users/${id}/role`,
     requestPayload,
   );

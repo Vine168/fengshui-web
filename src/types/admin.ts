@@ -21,6 +21,12 @@ export interface AdminUserRecord {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
+  sex?: string | null;
+  date_of_birth?: string | null;
+  time_of_birth?: string | null;
+  plan_type?: string | null;
+  current_subscription?: string | null;
   status?: AdminStatus;
   is_active?: boolean;
   account_type?: string;
@@ -58,6 +64,7 @@ export interface CreateAdminUserInput {
   name: string;
   email: string;
   password: string;
+  role?: string;
   role_id?: string;
   status?: AdminStatus;
 }
@@ -65,6 +72,8 @@ export interface CreateAdminUserInput {
 export interface UpdateAdminUserInput {
   name?: string;
   email?: string;
+  password?: string;
+  role?: string;
   status?: AdminStatus;
   is_active?: boolean;
 }
