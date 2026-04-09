@@ -73,6 +73,9 @@ export const Subscriptions: React.FC = () => {
   // Dialog States
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SubscriptionPlan | null>(
+    null,
+  );
 
   // Selection
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(
@@ -184,7 +187,6 @@ export const Subscriptions: React.FC = () => {
   };
 
   const handleDelete = async (plan: SubscriptionPlan) => {
-    if (!confirm(`Delete ${plan.plan_name}?`)) return;
     try {
       await removeSubscription(plan.id);
       toast.success("Plan deleted successfully");
@@ -245,9 +247,6 @@ export const Subscriptions: React.FC = () => {
           <h2 className="text-3xl font-bold text-primary tracking-tight">
             Subscriptions
           </h2>
-          <p className="text-muted-foreground">
-            Manage pricing plans and feature access.
-          </p>
         </div>
         <div className="flex gap-3">
           <Button
@@ -269,9 +268,6 @@ export const Subscriptions: React.FC = () => {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <CardTitle>Active Plans</CardTitle>
-                <CardDescription>
-                  Current subscription tiers available to users.
-                </CardDescription>
               </div>
               <div className="w-full md:w-auto">
                 <Input
@@ -335,7 +331,7 @@ export const Subscriptions: React.FC = () => {
                             </div>
                           </TableCell>
                           <TableCell className="py-4 px-6">
-                            <span className="text-sm text-muted-foreground">
+                            <span className="text-sm font-semibold">
                               {plan.plan_type}
                             </span>
                           </TableCell>
@@ -345,14 +341,14 @@ export const Subscriptions: React.FC = () => {
                             </span>
                           </TableCell>
                           <TableCell className="py-4 px-6">
-                            <span className="text-sm text-muted-foreground">
+                            <span className="text-sm">
                               {getDurationLabel(plan.duration)}
                             </span>
                           </TableCell>
                           <TableCell className="py-4 px-6">
                             <Badge
                               variant="outline"
-                              className="text-[10px] font-bold uppercase px-2 py-0.5"
+                              className="text-sm px-2 py-0.5"
                             >
                               {getFeatureLabel(plan.feature)}
                             </Badge>
@@ -367,8 +363,8 @@ export const Subscriptions: React.FC = () => {
                               variant="outline"
                               className={
                                 plan.is_active
-                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
-                                  : "border-rose-500/30 bg-rose-500/10 text-rose-500"
+                                  ? "border-green-500/30 bg-green-500/15 text-green-600"
+                                  : "border-rose-500/30 bg-rose-500/15 text-rose-600"
                               }
                             >
                               {plan.is_active ? "Active" : "Inactive"}
@@ -399,7 +395,7 @@ export const Subscriptions: React.FC = () => {
                                     size="icon"
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleDelete(plan);
+                                      setDeleteTarget(plan);
                                     }}
                                     className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all"
                                   >
@@ -435,9 +431,6 @@ export const Subscriptions: React.FC = () => {
             <DialogTitle>
               {isEditOpen ? "Edit Plan" : "Create New Plan"}
             </DialogTitle>
-            <DialogDescription>
-              Configure subscription plan details.
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -550,6 +543,45 @@ export const Subscriptions: React.FC = () => {
               onClick={isEditOpen ? handleUpdate : handleCreate}
             >
               {isEditOpen ? "Save Changes" : "Create Plan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
+
+      <DialogRoot
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Plan</DialogTitle>
+            <DialogDescription>
+              {deleteTarget
+                ? `Are you sure you want to delete ${deleteTarget.plan_name}? This action cannot be undone.`
+                : "Are you sure you want to delete this plan? This action cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              variant="danger"
+              onClick={async () => {
+                if (!deleteTarget) {
+                  return;
+                }
+                await handleDelete(deleteTarget);
+                setDeleteTarget(null);
+              }}
+            >
+              Delete Plan
             </Button>
           </DialogFooter>
         </DialogContent>

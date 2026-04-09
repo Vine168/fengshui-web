@@ -467,11 +467,11 @@ export const Users: React.FC = () => {
                               className={cn(
                                 "rounded-md px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border",
                                 user.status === "active" &&
-                                  "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+                                  "bg-green-500/15 text-green-600 border-green-500/30",
                                 user.status === "inactive" &&
-                                  "bg-amber-500/10 text-amber-400 border-amber-500/30",
+                                  "bg-orange-500/15 text-orange-200 border-orange-500/30",
                                 user.status === "suspended" &&
-                                  "bg-rose-500/10 text-rose-400 border-rose-500/30",
+                                  "bg-rose-500/10 text-rose-600 border-rose-500/30",
                               )}
                             >
                               {user.status.charAt(0).toUpperCase() +

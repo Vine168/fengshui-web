@@ -560,7 +560,6 @@ function RoleFormDialog({
             <Shield className="w-5 h-5 text-primary" />
             {mode === "create" ? "Create Role" : "Edit Role"}
           </DialogTitle>
-
         </DialogHeader>
 
         <div className="max-h-[65vh] overflow-y-auto py-4 pr-1 space-y-4">
@@ -1283,7 +1282,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                                   </div>
                                 </div>
                               </TableCell>
-                              <TableCell className="py-4 px-6 text-sm text-foreground/80">
+                              <TableCell className="py-4 px-6 text-foreground/90 font-semibold">
                                 {admin.email}
                               </TableCell>
                               <TableCell className="py-4 px-6">
@@ -1294,7 +1293,7 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                                     <Shield className="h-4 w-4 text-muted-foreground" />
                                   )}
                                   <div className="space-y-1">
-                                    <span className="block text-sm font-medium text-foreground/90">
+                                    <span className="block text-sm text-foreground/90 font-semibold">
                                       {admin.roleName}
                                     </span>
                                   </div>
@@ -1306,8 +1305,8 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                                   className={cn(
                                     "rounded-lg px-2 py-0.5 text-[9px] font-black uppercase tracking-widest",
                                     admin.status === "active"
-                                      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                                      : "border-zinc-500/20 bg-zinc-500/10 text-zinc-400",
+                                      ? "border-green-500/30 bg-green-500/15 text-green-600"
+                                      : "border-orange-500/30 bg-orange-500/15 text-orange-600",
                                   )}
                                 >
                                   {titleCase(admin.status)}

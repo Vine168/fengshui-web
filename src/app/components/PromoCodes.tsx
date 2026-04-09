@@ -42,6 +42,15 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
 } from "./ui/dropdown-menu";
+import {
+  DialogRoot,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "./ui/Dialog";
 import { TooltipProvider } from "./ui/tooltip";
 import { ActionTooltip } from "./ui/ActionTooltip";
 import { Pagination } from "./ui/Pagination";
@@ -63,6 +72,8 @@ export const PromoCodes: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const isMountedRef = useRef(true);
   const [selectedCode, setSelectedCode] = useState<PromoCodeRow | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PromoCodeRow | null>(null);
+  const [statusTarget, setStatusTarget] = useState<PromoCodeRow | null>(null);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -215,14 +226,12 @@ export const PromoCodes: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to delete this promo code?")) {
-      try {
-        await removePromoCodeById(id);
-        toast.success("Promo code deleted");
-        await fetchPromoCodes();
-      } catch (error) {
-        toast.error("Failed to delete promo code");
-      }
+    try {
+      await removePromoCodeById(id);
+      toast.success("Promo code deleted");
+      await fetchPromoCodes();
+    } catch (error) {
+      toast.error("Failed to delete promo code");
     }
   };
 
@@ -259,9 +268,6 @@ export const PromoCodes: React.FC = () => {
           <h2 className="text-3xl font-bold text-primary tracking-tight">
             Promo Codes
           </h2>
-          <p className="text-muted-foreground mt-1">
-            Manage discounts and promotional offers.
-          </p>
         </div>
         <Button
           variant="primary"
@@ -271,149 +277,6 @@ export const PromoCodes: React.FC = () => {
           Create New Code
         </Button>
       </div>
-
-      {isCreating && (
-        <Card className="border-primary/20 bg-primary/5 animate-in slide-in-from-top-4 duration-300">
-          <CardHeader>
-            <CardTitle>Create New Promo Code</CardTitle>
-            <CardDescription>
-              Configure the details for your new promotion.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Code Name
-                </label>
-                <div className="relative">
-                  <Ticket className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="e.g. SUMMER2024"
-                    className="pl-9 uppercase"
-                    value={newCode.code}
-                    onChange={(e) =>
-                      setNewCode({
-                        ...newCode,
-                        code: e.target.value.toUpperCase(),
-                      })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Discount Type
-                </label>
-                <Select
-                  value={newCode.discount_type}
-                  onChange={(e) =>
-                    setNewCode({
-                      ...newCode,
-                      discount_type: e.target.value as "percentage" | "amount",
-                    })
-                  }
-                >
-                  <option value="percentage">Percentage (%)</option>
-                  <option value="amount">Fixed Amount ($)</option>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Discount Value
-                </label>
-                <div className="relative">
-                  {newCode.discount_type === "amount" ? (
-                    <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">
-                      $
-                    </span>
-                  ) : (
-                    <Percent className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  )}
-                  <Input
-                    type="number"
-                    placeholder="0"
-                    className="pl-9"
-                    value={newCode.discount_value}
-                    onChange={(e) =>
-                      setNewCode({
-                        ...newCode,
-                        discount_value: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Expiry Date
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="date"
-                    className="pl-9"
-                    value={newCode.expires_at}
-                    onChange={(e) =>
-                      setNewCode({ ...newCode, expires_at: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Total Usage Limit
-                </label>
-                <Input
-                  type="number"
-                  placeholder="100"
-                  value={newCode.total_usage_limit}
-                  onChange={(e) =>
-                    setNewCode({
-                      ...newCode,
-                      total_usage_limit: Number(e.target.value),
-                    })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  Max Uses Per User
-                </label>
-                <div className="relative">
-                  <Users className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="number"
-                    placeholder="1"
-                    className="pl-9"
-                    value={newCode.max_uses_per_user}
-                    onChange={(e) =>
-                      setNewCode({
-                        ...newCode,
-                        max_uses_per_user: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6">
-              <Button variant="outline" onClick={() => setIsCreating(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" onClick={handleCreate}>
-                Create Code
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-4 m-[0px]">
@@ -607,12 +470,13 @@ export const PromoCodes: React.FC = () => {
                         </TableCell>
                         <TableCell className="py-4 px-6">
                           <Badge
+                            variant="outline"
                             className={
                               code.status === "active"
-                                ? "bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30 border-0 text-[10px] font-bold uppercase px-2.5 py-0.5"
+                                ? "bg-green-500/20 text-green-600 border-0 text-[10px] font-bold uppercase px-2.5 py-0.5"
                                 : code.status === "expired"
-                                  ? "bg-orange-500/20 text-orange-500 hover:bg-orange-500/30 border-0 text-[10px] font-bold uppercase px-2.5 py-0.5"
-                                  : "bg-slate-500/20 text-slate-500 hover:bg-slate-500/30 border-0 text-[10px] font-bold uppercase px-2.5 py-0.5"
+                                  ? "bg-orange-500/20 text-orange-600 border-0 text-[10px] font-bold uppercase px-2.5 py-0.5"
+                                  : "bg-slate-500/20 text-slate-500 border-0 text-[10px] font-bold uppercase px-2.5 py-0.5"
                             }
                           >
                             {code.status}
@@ -641,18 +505,28 @@ export const PromoCodes: React.FC = () => {
                             <div className="flex items-center justify-center gap-1">
                               <ActionTooltip
                                 label={
-                                  code.status === "active"
-                                    ? "Disable code"
-                                    : "Enable code"
+                                  code.status === "expired"
+                                    ? "Expired code"
+                                    : code.status === "active"
+                                      ? "Disable code"
+                                      : "Enable code"
                                 }
                               >
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                                  disabled={code.status === "expired"}
+                                  className={
+                                    code.status === "expired"
+                                      ? "h-8 w-8 cursor-not-allowed text-muted-foreground/50 opacity-50"
+                                      : "h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                                  }
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    void toggleStatus(code);
+                                    if (code.status === "expired") {
+                                      return;
+                                    }
+                                    setStatusTarget(code);
                                   }}
                                 >
                                   {code.status === "active" ? (
@@ -682,7 +556,7 @@ export const PromoCodes: React.FC = () => {
                                   className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-all"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleDelete(code.id);
+                                    setDeleteTarget(code);
                                   }}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -711,6 +585,252 @@ export const PromoCodes: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      <DialogRoot
+        open={isCreating}
+        onOpenChange={(open) => {
+          setIsCreating(open);
+          if (!open) {
+            setIsEditing(false);
+            setSelectedCode(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              {isEditing ? "Edit Promo Code" : "Create New Promo Code"}
+            </DialogTitle>
+            <DialogDescription>
+              Configure the details for this promotion.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Code Name
+              </label>
+              <div className="relative">
+                <Ticket className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="e.g. SUMMER2024"
+                  className="pl-9 uppercase"
+                  value={newCode.code}
+                  onChange={(e) =>
+                    setNewCode({
+                      ...newCode,
+                      code: e.target.value.toUpperCase(),
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Discount Type
+              </label>
+              <Select
+                value={newCode.discount_type}
+                onChange={(e) =>
+                  setNewCode({
+                    ...newCode,
+                    discount_type: e.target.value as "percentage" | "amount",
+                  })
+                }
+              >
+                <option value="percentage">Percentage (%)</option>
+                <option value="amount">Fixed Amount ($)</option>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Discount Value
+              </label>
+              <div className="relative">
+                {newCode.discount_type === "amount" ? (
+                  <span className="absolute left-3 top-2.5 text-sm text-muted-foreground">
+                    $
+                  </span>
+                ) : (
+                  <Percent className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                )}
+                <Input
+                  type="number"
+                  placeholder="0"
+                  className="pl-9"
+                  value={newCode.discount_value}
+                  onChange={(e) =>
+                    setNewCode({
+                      ...newCode,
+                      discount_value: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Expiry Date
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="date"
+                  className="pl-9"
+                  value={newCode.expires_at}
+                  onChange={(e) =>
+                    setNewCode({ ...newCode, expires_at: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Total Usage Limit
+              </label>
+              <Input
+                type="number"
+                placeholder="100"
+                value={newCode.total_usage_limit}
+                onChange={(e) =>
+                  setNewCode({
+                    ...newCode,
+                    total_usage_limit: Number(e.target.value),
+                  })
+                }
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                Max Uses Per User
+              </label>
+              <div className="relative">
+                <Users className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="number"
+                  placeholder="1"
+                  className="pl-9"
+                  value={newCode.max_uses_per_user}
+                  onChange={(e) =>
+                    setNewCode({
+                      ...newCode,
+                      max_uses_per_user: Number(e.target.value),
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setIsCreating(false);
+                  setIsEditing(false);
+                  setSelectedCode(null);
+                }}
+              >
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button variant="primary" onClick={handleCreate}>
+              {isEditing ? "Save Changes" : "Create Code"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
+
+      <DialogRoot
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Promo Code</DialogTitle>
+            <DialogDescription>
+              {deleteTarget
+                ? `Are you sure you want to delete ${deleteTarget.code}? This action cannot be undone.`
+                : "Are you sure you want to delete this promo code? This action cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              variant="danger"
+              onClick={async () => {
+                if (!deleteTarget) {
+                  return;
+                }
+                await handleDelete(deleteTarget.id);
+                setDeleteTarget(null);
+              }}
+            >
+              Delete Code
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
+
+      <DialogRoot
+        open={Boolean(statusTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setStatusTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {statusTarget?.status === "active"
+                ? "Disable Promo Code"
+                : "Enable Promo Code"}
+            </DialogTitle>
+            <DialogDescription>
+              {statusTarget
+                ? `Are you sure you want to ${statusTarget.status === "active" ? "disable" : "enable"} ${statusTarget.code}?`
+                : "Are you sure you want to change this promo code status?"}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost" onClick={() => setStatusTarget(null)}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              variant="primary"
+              onClick={async () => {
+                if (!statusTarget) {
+                  return;
+                }
+                await toggleStatus(statusTarget);
+                setStatusTarget(null);
+              }}
+            >
+              {statusTarget?.status === "active"
+                ? "Disable Code"
+                : "Enable Code"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
     </div>
   );
 };
