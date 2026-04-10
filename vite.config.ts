@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
-import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+
+const srcDir = new URL('./src', import.meta.url).pathname
 
 export default defineConfig({
   plugins: [
@@ -15,7 +16,7 @@ export default defineConfig({
   resolve: {
     alias: {
       // Alias @ to the src directory
-      '@': path.resolve(__dirname, './src'),
+      '@': srcDir,
     },
   },
 })

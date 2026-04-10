@@ -1,5 +1,11 @@
-import '../errorSuppression'; // MUST BE FIRST - Error suppression
-import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate } from "react-router";
+import "../errorSuppression"; // MUST BE FIRST - Error suppression
+import {
+  createBrowserRouter,
+  Navigate,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from "react-router";
 import { Dashboard } from "./components/Dashboard";
 import { Users } from "./components/Users";
 import { FengShuiRules } from "./components/FengShuiRules";
@@ -14,10 +20,19 @@ import React, { useState, useEffect, useRef } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "./components/ui/sheet";
+import { PermissionDenied } from "./components/PermissionDenied";
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+  SheetTitle,
+  SheetDescription,
+} from "./components/ui/sheet";
 import { Menu } from "lucide-react";
 import { Button } from "./components/ui/Button";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { signOut } from "../services/auth.service";
+import { useAdminAccess } from "../hooks/useAdminAccess";
 
 // Auth Guard Component
 const AuthGuard = ({ children }: { children: React.ReactNode }) => {
@@ -27,11 +42,13 @@ const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     // Check auth status on mount
     const checkAuth = () => {
-      const authStatus = localStorage.getItem("isLoggedIn") === "true";
+      const authStatus = Boolean(
+        localStorage.getItem("admin_token") || localStorage.getItem("token"),
+      );
       setIsLoggedIn(authStatus);
       setIsChecking(false);
     };
-    
+
     checkAuth();
   }, []);
 
@@ -65,19 +82,19 @@ const RootLayout = () => {
   // Track current active tab based on path
   const getActiveTab = () => {
     const path = location.pathname.substring(1);
-    if (path === 'home' || path === '') return 'dashboard';
-    if (path === 'users') return 'users';
-    if (path === 'rules') return 'rules';
-    if (path === 'promo-codes') return 'promo-codes';
-    if (path === 'subscriptions') return 'subscriptions';
-    if (path === 'notifications') return 'notifications';
-    if (path === 'telegram') return 'telegram';
-    if (path === 'admin') return 'admin-users';
-    if (path.startsWith('settings/general')) return 'settings-general';
-    if (path.startsWith('settings/security')) return 'settings-security';
-    if (path.startsWith('settings/bank')) return 'settings-bank';
-    if (path.startsWith('settings')) return 'settings-general';
-    return 'dashboard';
+    if (path === "home" || path === "") return "dashboard";
+    if (path === "users") return "users";
+    if (path === "rules") return "rules";
+    if (path === "promo-codes") return "promo-codes";
+    if (path === "subscriptions") return "subscriptions";
+    if (path === "notifications") return "notifications";
+    if (path === "telegram") return "telegram";
+    if (path === "admin") return "admin-users";
+    if (path.startsWith("settings/general")) return "settings-general";
+    if (path.startsWith("settings/security")) return "settings-security";
+    if (path.startsWith("settings/bank")) return "settings-bank";
+    if (path.startsWith("settings")) return "settings-general";
+    return "dashboard";
   };
 
   const [activeTab, setActiveTab] = useState(getActiveTab());
@@ -95,10 +112,10 @@ const RootLayout = () => {
       setIsMobileSidebarOpen(false);
     }
   }, [location.pathname]);
-  
-  const handleLogout = () => {
+
+  const handleLogout = async () => {
     if (!isMountedRef.current) return;
-    localStorage.removeItem("isLoggedIn");
+    await signOut();
     navigate("/login", { replace: true });
   };
 
@@ -106,17 +123,17 @@ const RootLayout = () => {
     if (!isMountedRef.current) return;
     setIsMobileSidebarOpen(open);
   };
-  
+
   return (
     <TooltipProvider>
       <div className="flex h-screen bg-background font-sans text-foreground overflow-hidden selection:bg-primary/30">
         {/* Background Effect */}
         <div className="fixed inset-0 z-0 pointer-events-none bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-background to-background" />
-        
+
         {/* Desktop Sidebar */}
         <div className="hidden md:flex h-full z-20 transition-all duration-300">
-          <Sidebar 
-            activeTab={activeTab} 
+          <Sidebar
+            activeTab={activeTab}
             setActiveTab={() => {}} // Controlled by routing now
             isCollapsed={isSidebarCollapsed}
             onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -128,27 +145,41 @@ const RootLayout = () => {
           {/* Mobile Header */}
           <div className="md:hidden flex items-center justify-between p-4 border-b border-border bg-card/80 backdrop-blur-md sticky top-0 z-50">
             <div className="flex items-center gap-2">
-               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/20">
-                 <span className="text-primary font-bold">M</span>
-               </div>
-               <h1 className="font-bold text-lg text-primary tracking-wide uppercase">Master Piseth</h1>
+              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/20">
+                <span className="text-primary font-bold">M</span>
+              </div>
+              <h1 className="font-bold text-lg text-primary tracking-wide uppercase">
+                Master Piseth
+              </h1>
             </div>
-            
-            <Sheet open={isMobileSidebarOpen} onOpenChange={handleMobileNavToggle}>
+
+            <Sheet
+              open={isMobileSidebarOpen}
+              onOpenChange={handleMobileNavToggle}
+            >
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-foreground hover:bg-secondary/50">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-foreground hover:bg-secondary/50"
+                >
                   <Menu className="w-6 h-6" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-72 border-r border-border bg-background">
-                <SheetTitle className="sr-only">Mobile Navigation Menu</SheetTitle>
+              <SheetContent
+                side="left"
+                className="p-0 w-72 border-r border-border bg-background"
+              >
+                <SheetTitle className="sr-only">
+                  Mobile Navigation Menu
+                </SheetTitle>
                 <SheetDescription className="sr-only">
                   Navigation links for Master Piseth admin dashboard.
                 </SheetDescription>
-                <Sidebar 
-                  activeTab={activeTab} 
-                  setActiveTab={() => {}} 
-                  onNavigate={() => setIsMobileSidebarOpen(false)} 
+                <Sidebar
+                  activeTab={activeTab}
+                  setActiveTab={() => {}}
+                  onNavigate={() => setIsMobileSidebarOpen(false)}
                   isMobile={true}
                   onToggle={() => setIsMobileSidebarOpen(false)}
                 />
@@ -185,23 +216,59 @@ const RootLayout = () => {
 const SettingsWrapper = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const tab = location.pathname.split('/').pop() || 'general';
-  const fullTab = `settings-${tab === 'settings' ? 'general' : tab}`;
-  
-  return <Settings onLogout={() => {
-    localStorage.removeItem("isLoggedIn");
-    navigate("/login", { replace: true });
-  }} activeTab={fullTab} />;
+  const tab = location.pathname.split("/").pop() || "general";
+  const fullTab = `settings-${tab === "settings" ? "general" : tab}`;
+
+  return (
+    <Settings
+      onLogout={async () => {
+        await signOut();
+        navigate("/login", { replace: true });
+      }}
+      activeTab={fullTab}
+    />
+  );
 };
 
 const LoginComponent = () => {
   const navigate = useNavigate();
   const onLogin = () => {
-    localStorage.setItem("isLoggedIn", "true");
     navigate("/home", { replace: true });
   };
   return <Login onLogin={onLogin} />;
 };
+
+const PermissionGate = ({
+  requiredPermissions,
+  children,
+}: {
+  requiredPermissions: string[];
+  children: React.ReactNode;
+}) => {
+  const navigate = useNavigate();
+  const { isLoadingAccess, isSuperUser, hasAnyPermission } = useAdminAccess();
+
+  if (isLoadingAccess) {
+    return null;
+  }
+
+  if (!isSuperUser && !hasAnyPermission(requiredPermissions)) {
+    return (
+      <PermissionDenied
+        title="Feature Not Available"
+        description="Your role does not include this module. Contact an administrator to request access."
+        actionLabel="Back to Dashboard"
+        onAction={() => navigate("/home")}
+      />
+    );
+  }
+
+  return <>{children}</>;
+};
+
+const withPermission = (permissions: string[], element: React.ReactNode) => (
+  <PermissionGate requiredPermissions={permissions}>{element}</PermissionGate>
+);
 
 export const router = createBrowserRouter([
   {
@@ -217,24 +284,64 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="/home" replace /> },
-      { path: "home", Component: Dashboard },
-      { path: "users", Component: Users },
-      { path: "admin", Component: AdminUsers },
-      { path: "rules", Component: FengShuiRules },
-      { path: "promo-codes", Component: PromoCodes },
-      { path: "subscriptions", Component: Subscriptions },
-      { path: "notifications", Component: Notifications },
-      { path: "telegram", Component: TelegramConfiguration },
-      { 
-        path: "settings", 
+      {
+        path: "home",
+        element: withPermission(["dashboard.read"], <Dashboard />),
+      },
+      {
+        path: "users",
+        element: withPermission(["mobile_users.read"], <Users />),
+      },
+      {
+        path: "admin",
+        element: withPermission(["admin_users.read"], <AdminUsers />),
+      },
+      {
+        path: "rules",
+        element: withPermission(["rules.read"], <FengShuiRules />),
+      },
+      {
+        path: "promo-codes",
+        element: withPermission(["promo_codes.read"], <PromoCodes />),
+      },
+      {
+        path: "subscriptions",
+        element: withPermission(["subscriptions.read"], <Subscriptions />),
+      },
+      {
+        path: "notifications",
+        element: withPermission(["notifications.read"], <Notifications />),
+      },
+      {
+        path: "telegram",
+        element: withPermission(["telegram.read"], <TelegramConfiguration />),
+      },
+      {
+        path: "settings",
         children: [
           { index: true, element: <Navigate to="general" replace /> },
-          { path: "general", Component: SettingsWrapper },
-          { path: "security", Component: SettingsWrapper },
-          { path: "bank", Component: SettingsWrapper },
-        ]
+          {
+            path: "general",
+            element: withPermission(["settings.read"], <SettingsWrapper />),
+          },
+          {
+            path: "security",
+            element: withPermission(["settings.read"], <SettingsWrapper />),
+          },
+          {
+            path: "bank",
+            element: withPermission(["settings.read"], <SettingsWrapper />),
+          },
+        ],
       },
-      { path: "*", Component: () => <div className="p-12 text-center text-primary/50 text-2xl font-black uppercase tracking-widest">Protocol 404: Zone Not Found</div> },
+      {
+        path: "*",
+        Component: () => (
+          <div className="p-12 text-center text-primary/50 text-2xl font-black uppercase tracking-widest">
+            Protocol 404: Zone Not Found
+          </div>
+        ),
+      },
     ],
   },
 ]);
