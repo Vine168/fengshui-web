@@ -8,7 +8,6 @@ import {
 } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { Input, Select, Textarea } from "./ui/Form";
-import { Switch } from "./ui/Switch";
 import { Send, RefreshCw, Plus, Trash2 } from "lucide-react";
 import {
   Table,
@@ -34,20 +33,19 @@ import { HttpError } from "../../lib/http";
 import {
   createNotificationDraft,
   deleteNotification,
+  getNotification,
   listNotifications,
   previewAudience,
   sendNotification,
   type NotificationRow,
 } from "../../services/notifications.service";
+import { listSubscriptions } from "../../services/subscriptions.service";
 import type {
-  NotificationAccountStatus,
   NotificationCreateInput,
   NotificationElementTarget,
-  NotificationTargetFilters,
-  NotificationTargetOperator,
-  NotificationTargetType,
   NotificationSubscriptionTarget,
 } from "../../types/notification";
+import type { SubscriptionPlan } from "../../types/subscription";
 
 const PAGE_LIMIT = 20;
 
@@ -67,11 +65,8 @@ const SUBSCRIPTION_TARGET_VALUES: NotificationSubscriptionTarget[] = [
   "year",
   "custom",
 ];
-const ACCOUNT_STATUS_VALUES: NotificationAccountStatus[] = [
-  "active",
-  "inactive",
-  "suspended",
-];
+
+type AudienceFilter = "" | "all" | "elements" | "subscriptions" | "combined";
 
 function formatLabel(value: string) {
   return value
@@ -94,22 +89,53 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function getAudienceType(
+  notification: NotificationRow,
+): Exclude<AudienceFilter, ""> {
+  const hasElements = notification.elements.length > 0;
+  const hasSubscriptions = notification.subscriptions.length > 0;
+
+  if (hasElements && hasSubscriptions) return "combined";
+  if (hasElements) return "elements";
+  if (hasSubscriptions) return "subscriptions";
+  return "all";
+}
+
 function getTargetLabel(notification: NotificationRow) {
-  if (notification.targetType === "all") {
-    return "All Users";
+  const labels: string[] = [];
+
+  if (notification.elements.length > 0) {
+    labels.push(
+      `Elements: ${notification.elements.map((value) => formatLabel(value)).join(", ")}`,
+    );
   }
 
-  if (!notification.targetValue) {
-    return formatLabel(notification.targetType);
+  if (notification.subscriptions.length > 0) {
+    labels.push(
+      `Subscriptions: ${notification.subscriptions
+        .map((value) => formatLabel(value))
+        .join(", ")}`,
+    );
   }
 
-  return `${formatLabel(notification.targetType)}: ${formatLabel(notification.targetValue)}`;
+  return labels.length > 0 ? labels.join(" • ") : "All Users";
+}
+
+function formatDateTime(value: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
 }
 
 export const Notifications: React.FC = () => {
   const isMountedRef = useRef(true);
+  const draftCountRequestIdRef = useRef(0);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
+  const [customPlans, setCustomPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [customPlansLoading, setCustomPlansLoading] = useState(false);
+  const [customPlansQuery, setCustomPlansQuery] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState({
@@ -122,36 +148,27 @@ export const Notifications: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<
     "" | "draft" | "sent" | "failed"
   >("");
-  const [targetFilter, setTargetFilter] = useState<"" | NotificationTargetType>(
-    "",
-  );
+  const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>("");
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [sendTarget, setSendTarget] = useState<NotificationRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<NotificationRow | null>(
     null,
   );
-  const [useAdvancedTargeting, setUseAdvancedTargeting] = useState(false);
   const [confirmZeroAudienceSend, setConfirmZeroAudienceSend] = useState(false);
 
   const [form, setForm] = useState<{
     title: string;
     body: string;
-    targetType: NotificationTargetType;
     elementTargets: NotificationElementTarget[];
     subscriptionTargets: NotificationSubscriptionTarget[];
-    targetOperator: NotificationTargetOperator;
-    accountStatus: NotificationAccountStatus[];
-    activeState: "all" | "active" | "inactive";
+    subscriptionPlanIds: string[];
   }>({
     title: "",
     body: "",
-    targetType: "all",
     elementTargets: [],
     subscriptionTargets: [],
-    targetOperator: "and",
-    accountStatus: [],
-    activeState: "all",
+    subscriptionPlanIds: [],
   });
 
   const [previewCount, setPreviewCount] = useState<number | null>(null);
@@ -160,60 +177,52 @@ export const Notifications: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [draftRecipientCounts, setDraftRecipientCounts] = useState<
+    Record<string, number>
+  >({});
+
+  const canSaveDraft = useMemo(() => {
+    return Boolean(form.title.trim() && form.body.trim());
+  }, [form.title, form.body]);
+
+  const filteredNotifications = useMemo(() => {
+    if (!audienceFilter) return notifications;
+    return notifications.filter(
+      (notification) => getAudienceType(notification) === audienceFilter,
+    );
+  }, [notifications, audienceFilter]);
 
   const statusCounts = useMemo(() => {
-    return notifications.reduce(
-      (acc, item) => {
-        if (item.status === "draft") acc.draft += 1;
-        if (item.status === "sent") acc.sent += 1;
-        if (item.status === "failed") acc.failed += 1;
+    return filteredNotifications.reduce(
+      (acc, notification) => {
+        acc[notification.status] += 1;
         return acc;
       },
       { draft: 0, sent: 0, failed: 0 },
     );
-  }, [notifications]);
+  }, [filteredNotifications]);
 
-  const selectedTargetValue = useMemo(() => {
-    if (form.targetType === "element") {
-      return form.elementTargets[0] || "";
-    }
-    if (form.targetType === "subscription") {
-      return form.subscriptionTargets[0] || "";
-    }
-    return "";
-  }, [form.targetType, form.elementTargets, form.subscriptionTargets]);
-
-  const advancedTargetFilters = useMemo(() => {
-    const filters: NotificationTargetFilters = {};
-
-    if (form.elementTargets.length > 0) {
-      filters.element = form.elementTargets;
-    }
-    if (form.subscriptionTargets.length > 0) {
-      filters.subscription = form.subscriptionTargets;
-    }
-    if (form.accountStatus.length > 0) {
-      filters.account_status = form.accountStatus;
-    }
-    if (form.activeState === "active") {
-      filters.is_active = true;
-    }
-    if (form.activeState === "inactive") {
-      filters.is_active = false;
-    }
-
-    return filters;
-  }, [
-    form.elementTargets,
-    form.subscriptionTargets,
-    form.accountStatus,
-    form.activeState,
-  ]);
-
-  const hasAdvancedFilters = useMemo(
-    () => Object.keys(advancedTargetFilters).length > 0,
-    [advancedTargetFilters],
+  const isCustomSubscriptionSelected = useMemo(
+    () => form.subscriptionTargets.includes("custom"),
+    [form.subscriptionTargets],
   );
+
+  const filteredCustomPlans = useMemo(() => {
+    const query = customPlansQuery.trim().toLowerCase();
+    if (!query) return customPlans;
+    return customPlans.filter((plan) =>
+      plan.plan_name.toLowerCase().includes(query),
+    );
+  }, [customPlans, customPlansQuery]);
+
+  const selectedCustomPlanNames = useMemo(() => {
+    if (form.subscriptionPlanIds.length === 0) return [] as string[];
+
+    const planMap = new Map(
+      customPlans.map((plan) => [plan.id, plan.plan_name]),
+    );
+    return form.subscriptionPlanIds.map((id) => planMap.get(id) || id);
+  }, [customPlans, form.subscriptionPlanIds]);
 
   const toggleElementTarget = (value: NotificationElementTarget) => {
     setForm((current) => ({
@@ -230,42 +239,116 @@ export const Notifications: React.FC = () => {
       subscriptionTargets: current.subscriptionTargets.includes(value)
         ? current.subscriptionTargets.filter((item) => item !== value)
         : [...current.subscriptionTargets, value],
+      subscriptionPlanIds:
+        value === "custom" && current.subscriptionTargets.includes(value)
+          ? []
+          : current.subscriptionPlanIds,
     }));
   };
 
-  const toggleAccountStatus = (value: NotificationAccountStatus) => {
-    setForm((current) => {
-      const exists = current.accountStatus.includes(value);
-      return {
-        ...current,
-        accountStatus: exists
-          ? current.accountStatus.filter((item) => item !== value)
-          : [...current.accountStatus, value],
-      };
-    });
+  const toggleSubscriptionPlanId = (planId: string) => {
+    setForm((current) => ({
+      ...current,
+      subscriptionPlanIds: current.subscriptionPlanIds.includes(planId)
+        ? current.subscriptionPlanIds.filter((id) => id !== planId)
+        : [...current.subscriptionPlanIds, planId],
+    }));
+  };
+
+  const hydrateDraftRecipientCounts = async (
+    rows: NotificationRow[],
+    requestId: number,
+  ) => {
+    const draftsToPreview = rows.filter(
+      (row) => row.status === "draft" && row.recipientCount === null,
+    );
+
+    if (draftsToPreview.length === 0) {
+      if (
+        isMountedRef.current &&
+        draftCountRequestIdRef.current === requestId
+      ) {
+        setDraftRecipientCounts({});
+      }
+      return;
+    }
+
+    const previewResults = await Promise.all(
+      draftsToPreview.map(async (row) => {
+        try {
+          const preview = await previewAudience({
+            ...(row.elements.length > 0 ? { elements: row.elements } : {}),
+            ...(row.subscriptions.length > 0
+              ? { subscriptions: row.subscriptions }
+              : {}),
+            ...(row.subscriptionPlanIds.length > 0
+              ? { subscription_plan_ids: row.subscriptionPlanIds }
+              : {}),
+          });
+
+          return [row.id, preview.count] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    if (!isMountedRef.current || draftCountRequestIdRef.current !== requestId) {
+      return;
+    }
+
+    const nextCounts: Record<string, number> = {};
+    for (const result of previewResults) {
+      if (!result) continue;
+      const [id, count] = result;
+      nextCounts[id] = count;
+    }
+
+    setDraftRecipientCounts(nextCounts);
   };
 
   const fetchNotifications = async (page = currentPage) => {
     try {
       if (isMountedRef.current) setLoading(true);
+      const requestId = Date.now();
+      draftCountRequestIdRef.current = requestId;
 
       const response = await listNotifications({
         page,
         limit: PAGE_LIMIT,
         status: statusFilter || undefined,
-        target_type: targetFilter || undefined,
       });
 
       if (!isMountedRef.current) return;
 
       setNotifications(response.notifications);
       setPagination(response.pagination);
+      void hydrateDraftRecipientCounts(response.notifications, requestId);
     } catch (error) {
       if (isMountedRef.current) {
         toast.error(getErrorMessage(error, "Failed to load notifications"));
       }
     } finally {
       if (isMountedRef.current) setLoading(false);
+    }
+  };
+
+  const fetchCustomPlans = async () => {
+    try {
+      if (isMountedRef.current) setCustomPlansLoading(true);
+
+      const response = await listSubscriptions({ page: 1, limit: 100 });
+      if (!isMountedRef.current) return;
+
+      setCustomPlans(
+        response.plans.filter((plan) => plan.plan_type === "custom"),
+      );
+    } catch (error) {
+      if (isMountedRef.current) {
+        toast.error(getErrorMessage(error, "Failed to load custom plans"));
+      }
+    } finally {
+      if (isMountedRef.current) setCustomPlansLoading(false);
     }
   };
 
@@ -281,7 +364,19 @@ export const Notifications: React.FC = () => {
   useEffect(() => {
     fetchNotifications(currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, statusFilter, targetFilter]);
+  }, [currentPage, statusFilter]);
+
+  useEffect(() => {
+    if (
+      !isCreateOpen ||
+      !isCustomSubscriptionSelected ||
+      customPlans.length > 0
+    ) {
+      return;
+    }
+    fetchCustomPlans();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCreateOpen, isCustomSubscriptionSelected]);
 
   useEffect(() => {
     if (!isCreateOpen) {
@@ -289,38 +384,19 @@ export const Notifications: React.FC = () => {
     }
 
     const runPreview = async () => {
-      if (
-        !useAdvancedTargeting &&
-        form.targetType !== "all" &&
-        !selectedTargetValue
-      ) {
-        setPreviewCount(null);
-        setPreviewLabel(null);
-        return;
-      }
-
-      if (useAdvancedTargeting && !hasAdvancedFilters) {
-        setPreviewCount(null);
-        setPreviewLabel(null);
-        return;
-      }
-
       setPreviewLoading(true);
       try {
-        const preview = await previewAudience(
-          useAdvancedTargeting
-            ? {
-                target_operator: form.targetOperator,
-                target_filters: advancedTargetFilters,
-              }
-            : {
-                target_type: form.targetType,
-                target_value:
-                  form.targetType === "all" || !selectedTargetValue
-                    ? undefined
-                    : selectedTargetValue,
-              },
-        );
+        const preview = await previewAudience({
+          ...(form.elementTargets.length > 0
+            ? { elements: form.elementTargets }
+            : {}),
+          ...(form.subscriptionTargets.length > 0
+            ? { subscriptions: form.subscriptionTargets }
+            : {}),
+          ...(form.subscriptionPlanIds.length > 0
+            ? { subscription_plan_ids: form.subscriptionPlanIds }
+            : {}),
+        });
         if (isMountedRef.current) {
           setPreviewCount(preview.count);
           setPreviewLabel(preview.label);
@@ -340,12 +416,9 @@ export const Notifications: React.FC = () => {
 
     runPreview();
   }, [
-    form.targetType,
-    form.targetOperator,
-    selectedTargetValue,
-    advancedTargetFilters,
-    hasAdvancedFilters,
-    useAdvancedTargeting,
+    form.elementTargets,
+    form.subscriptionTargets,
+    form.subscriptionPlanIds,
     isCreateOpen,
   ]);
 
@@ -353,13 +426,11 @@ export const Notifications: React.FC = () => {
     setForm({
       title: "",
       body: "",
-      targetType: "all",
       elementTargets: [],
       subscriptionTargets: [],
-      targetOperator: "and",
-      accountStatus: [],
-      activeState: "all",
+      subscriptionPlanIds: [],
     });
+    setCustomPlansQuery("");
     setPreviewCount(null);
     setPreviewLabel(null);
     setConfirmZeroAudienceSend(false);
@@ -376,47 +447,13 @@ export const Notifications: React.FC = () => {
       return;
     }
 
-    if (
-      !useAdvancedTargeting &&
-      form.targetType !== "all" &&
-      !selectedTargetValue
-    ) {
-      toast.error("Target value is required for this target type");
-      return;
-    }
-
-    if (useAdvancedTargeting && previewCount === 0) {
-      toast.error("Audience preview is zero. Adjust filters before saving.");
-      return;
-    }
-
-    if (useAdvancedTargeting && !hasAdvancedFilters) {
-      toast.error("Select at least one advanced filter before saving.");
-      return;
-    }
-
-    const legacyTargetValue =
-      form.targetType === "element"
-        ? form.elementTargets[0]
-        : form.targetType === "subscription"
-          ? form.subscriptionTargets[0]
-          : undefined;
-
-    const payload: NotificationCreateInput = useAdvancedTargeting
-      ? {
-          title: form.title.trim(),
-          body: form.body.trim(),
-          target_operator: form.targetOperator,
-          target_filters: advancedTargetFilters,
-        }
-      : {
-          title: form.title.trim(),
-          body: form.body.trim(),
-          target_type: form.targetType,
-          ...(form.targetType !== "all" && legacyTargetValue
-            ? { target_value: legacyTargetValue }
-            : {}),
-        };
+    const payload: NotificationCreateInput = {
+      title: form.title.trim(),
+      body: form.body.trim(),
+      elements: form.elementTargets,
+      subscriptions: form.subscriptionTargets,
+      subscription_plan_ids: form.subscriptionPlanIds,
+    };
 
     setIsCreating(true);
     try {
@@ -437,8 +474,32 @@ export const Notifications: React.FC = () => {
 
   const handleSendDraft = async () => {
     if (!sendTarget) return;
+    if (isSending) return;
 
-    if (sendTarget.recipientCount === 0 && !confirmZeroAudienceSend) {
+    let latestNotification: NotificationRow;
+    try {
+      latestNotification = await getNotification(sendTarget.id);
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Failed to validate notification status"),
+      );
+      return;
+    }
+
+    if (latestNotification.status !== "draft") {
+      toast.error("Only draft notifications can be sent");
+      setSendTarget(null);
+      setConfirmZeroAudienceSend(false);
+      await fetchNotifications(currentPage);
+      return;
+    }
+
+    const resolvedRecipientCount =
+      latestNotification.recipientCount ??
+      draftRecipientCounts[latestNotification.id] ??
+      sendTarget.recipientCount;
+
+    if (resolvedRecipientCount === 0 && !confirmZeroAudienceSend) {
       setConfirmZeroAudienceSend(true);
       toast.warning("Audience is zero. Click send again to confirm.");
       return;
@@ -446,7 +507,19 @@ export const Notifications: React.FC = () => {
 
     setIsSending(true);
     try {
-      await sendNotification(sendTarget.id);
+      const sentNotification = await sendNotification(sendTarget.id);
+      if (isMountedRef.current) {
+        setNotifications((current) =>
+          current.map((item) =>
+            item.id === sentNotification.id ? sentNotification : item,
+          ),
+        );
+        setDraftRecipientCounts((current) => {
+          const next = { ...current };
+          delete next[sentNotification.id];
+          return next;
+        });
+      }
       toast.success("Notification sent");
       setSendTarget(null);
       setConfirmZeroAudienceSend(false);
@@ -460,10 +533,37 @@ export const Notifications: React.FC = () => {
 
   const handleDeleteNotification = async () => {
     if (!deleteTarget) return;
+    if (isDeleting) return;
+
+    try {
+      const latestNotification = await getNotification(deleteTarget.id);
+      if (latestNotification.status !== "draft") {
+        toast.error("Only draft notifications can be deleted");
+        setDeleteTarget(null);
+        await fetchNotifications(currentPage);
+        return;
+      }
+    } catch (error) {
+      toast.error(
+        getErrorMessage(error, "Failed to validate notification status"),
+      );
+      return;
+    }
 
     setIsDeleting(true);
     try {
       await deleteNotification(deleteTarget.id);
+      if (isMountedRef.current) {
+        const deletedId = deleteTarget.id;
+        setNotifications((current) =>
+          current.filter((item) => item.id !== deletedId),
+        );
+        setDraftRecipientCounts((current) => {
+          const next = { ...current };
+          delete next[deletedId];
+          return next;
+        });
+      }
       toast.success("Notification deleted");
       setDeleteTarget(null);
       await fetchNotifications(currentPage);
@@ -478,10 +578,11 @@ export const Notifications: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Notifications</h2>
-          <p className="text-sm text-muted-foreground">
-            Create drafts, preview recipients, send, and manage history.
-          </p>
+          <div>
+            <h2 className="text-3xl font-bold text-primary tracking-tight">
+              Notifications
+            </h2>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -502,19 +603,17 @@ export const Notifications: React.FC = () => {
           </Select>
 
           <Select
-            value={targetFilter}
+            value={audienceFilter}
             onChange={(event) => {
-              setTargetFilter(
-                event.target.value as "" | NotificationTargetType,
-              );
-              setCurrentPage(1);
+              setAudienceFilter(event.target.value as AudienceFilter);
             }}
-            className="w-[170px]"
+            className="w-[190px]"
           >
-            <option value="">All Targets</option>
+            <option value="">All Audiences</option>
             <option value="all">All Users</option>
-            <option value="element">Element</option>
-            <option value="subscription">Subscription</option>
+            <option value="elements">Elements</option>
+            <option value="subscriptions">Subscriptions</option>
+            <option value="combined">Combined</option>
           </Select>
 
           <Button
@@ -537,7 +636,7 @@ export const Notifications: React.FC = () => {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Drafts on this page</p>
+            <p className="text-xs text-muted-foreground">Drafts in view</p>
             <p className="text-2xl font-semibold tabular-nums">
               {statusCounts.draft}
             </p>
@@ -545,7 +644,7 @@ export const Notifications: React.FC = () => {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Sent on this page</p>
+            <p className="text-xs text-muted-foreground">Sent in view</p>
             <p className="text-2xl font-semibold tabular-nums text-green-600">
               {statusCounts.sent}
             </p>
@@ -553,7 +652,7 @@ export const Notifications: React.FC = () => {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Failed on this page</p>
+            <p className="text-xs text-muted-foreground">Failed in view</p>
             <p className="text-2xl font-semibold tabular-nums text-rose-600">
               {statusCounts.failed}
             </p>
@@ -564,9 +663,6 @@ export const Notifications: React.FC = () => {
       <Card className="h-full overflow-hidden">
         <CardHeader className="py-4">
           <CardTitle className="text-lg">Notification History</CardTitle>
-          <CardDescription>
-            Only key fields are shown for faster admin actions.
-          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -574,9 +670,11 @@ export const Notifications: React.FC = () => {
               <TableHeader>
                 <TableRow className="bg-transparent hover:bg-transparent border-b border-border/60">
                   <TableHead>Title</TableHead>
-                  <TableHead>Target</TableHead>
+                  <TableHead>Elements</TableHead>
+                  <TableHead>Subscriptions</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Recipients</TableHead>
+                  <TableHead>Created By</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="pr-6 text-center">Actions</TableHead>
                 </TableRow>
@@ -585,7 +683,7 @@ export const Notifications: React.FC = () => {
                 {loading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={8}
                       className="text-center h-32 text-muted-foreground"
                     >
                       Loading notifications...
@@ -594,25 +692,78 @@ export const Notifications: React.FC = () => {
                 ) : notifications.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={8}
                       className="text-center h-32 text-muted-foreground"
                     >
                       No notifications found.
                     </TableCell>
                   </TableRow>
+                ) : filteredNotifications.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={8}
+                      className="text-center h-32 text-muted-foreground"
+                    >
+                      No notifications match this audience filter.
+                    </TableCell>
+                  </TableRow>
                 ) : (
-                  notifications.map((notification) => (
+                  filteredNotifications.map((notification) => (
                     <TableRow
                       key={notification.id}
                       className="border-b border-border/40"
                     >
-                      <TableCell className="font-semibold text-foreground whitespace-nowrap max-w-[220px] truncate">
-                        {notification.title || "-"}
+                      <TableCell className="max-w-[260px]">
+                        <p className="font-semibold text-foreground whitespace-nowrap truncate">
+                          {notification.title || "-"}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                          {notification.body || "-"}
+                        </p>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {getTargetLabel(notification)}
-                        </Badge>
+                      <TableCell className="max-w-[240px]">
+                        <div className="flex flex-wrap gap-1.5">
+                          {notification.elements.length === 0 ? (
+                            <Badge variant="outline" className="text-xs">
+                              All
+                            </Badge>
+                          ) : (
+                            notification.elements.map((value) => (
+                              <Badge
+                                key={`${notification.id}-element-${value}`}
+                                variant="outline"
+                                className="text-xs"
+                              >
+                                {formatLabel(value)}
+                              </Badge>
+                            ))
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[260px]">
+                        <div className="flex flex-wrap gap-1.5">
+                          {notification.subscriptions.length === 0 ? (
+                            <Badge variant="outline" className="text-xs">
+                              All
+                            </Badge>
+                          ) : (
+                            notification.subscriptions.map((value) => (
+                              <Badge
+                                key={`${notification.id}-sub-${value}`}
+                                variant="outline"
+                                className="text-xs"
+                              >
+                                {formatLabel(value)}
+                              </Badge>
+                            ))
+                          )}
+                        </div>
+                        {notification.subscriptionPlanIds.length > 0 && (
+                          <p className="mt-1 text-[11px] text-muted-foreground truncate">
+                            Custom plans:{" "}
+                            {notification.subscriptionPlanIds.length}
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -629,12 +780,17 @@ export const Notifications: React.FC = () => {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm tabular-nums">
-                        {notification.recipientCount}
+                        {notification.recipientCount ??
+                          draftRecipientCounts[notification.id] ??
+                          (notification.status === "draft"
+                            ? "Calculating..."
+                            : "-")}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {notification.createdAt
-                          ? new Date(notification.createdAt).toLocaleString()
-                          : "-"}
+                        {notification.createdByName || "-"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDateTime(notification.createdAt)}
                       </TableCell>
                       <TableCell
                         className="pr-6"
@@ -657,7 +813,7 @@ export const Notifications: React.FC = () => {
                           <Button
                             variant="ghost"
                             size="icon"
-                            disabled={notification.status === "sent"}
+                            disabled={notification.status !== "draft"}
                             className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
                             onClick={() => setDeleteTarget(notification)}
                           >
@@ -696,247 +852,195 @@ export const Notifications: React.FC = () => {
           }
         }}
       >
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Notification Draft</DialogTitle>
-            <DialogDescription>
-              Fill message content and choose targeting. Advanced filters are
-              optional.
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Title</label>
-              <Input
-                value={form.title}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    title: event.target.value,
-                  }))
-                }
-                placeholder="System Notice"
-                maxLength={255}
-              />
-            </div>
+          <div className="space-y-5 py-2">
+            <div className="rounded-xl border border-border/60 bg-card/30 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold tracking-wide text-foreground/90">
+                  Message
+                </h4>
+                <Badge variant="outline" className="text-[11px]">
+                  Required
+                </Badge>
+              </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Body</label>
-              <Textarea
-                value={form.body}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    body: event.target.value,
-                  }))
-                }
-                placeholder="Message content..."
-                className="min-h-28"
-              />
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/10 px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium">Advanced Filters</p>
-                  <p className="text-xs text-muted-foreground">
-                    Use when you need multiple target conditions.
-                  </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Title</label>
+                  <span className="text-xs text-muted-foreground">
+                    {form.title.length}/255
+                  </span>
                 </div>
-                <Switch
-                  checked={useAdvancedTargeting}
-                  onCheckedChange={setUseAdvancedTargeting}
+                <Input
+                  value={form.title}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      title: event.target.value,
+                    }))
+                  }
+                  placeholder="System Notice"
+                  maxLength={255}
                 />
               </div>
 
-              {!useAdvancedTargeting ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Target Type</label>
-                    <Select
-                      value={form.targetType}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          targetType: event.target
-                            .value as NotificationTargetType,
-                        }))
-                      }
-                    >
-                      <option value="all">All</option>
-                      <option value="element">Element</option>
-                      <option value="subscription">Subscription</option>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Target Value</label>
-                    <Select
-                      value={selectedTargetValue}
-                      disabled={form.targetType === "all"}
-                      onChange={(event) =>
-                        setForm((current) =>
-                          current.targetType === "element"
-                            ? {
-                                ...current,
-                                elementTargets: event.target.value
-                                  ? [
-                                      event.target
-                                        .value as NotificationElementTarget,
-                                    ]
-                                  : [],
-                              }
-                            : {
-                                ...current,
-                                subscriptionTargets: event.target.value
-                                  ? [
-                                      event.target
-                                        .value as NotificationSubscriptionTarget,
-                                    ]
-                                  : [],
-                              },
-                        )
-                      }
-                    >
-                      <option value="">Select value</option>
-                      {(form.targetType === "element"
-                        ? ELEMENT_TARGET_VALUES
-                        : SUBSCRIPTION_TARGET_VALUES
-                      ).map((value) => (
-                        <option key={value} value={value}>
-                          {formatLabel(value)}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Body</label>
+                  <span className="text-xs text-muted-foreground">
+                    {form.body.length} chars
+                  </span>
                 </div>
-              ) : (
-                <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Operator</label>
-                      <Select
-                        value={form.targetOperator}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            targetOperator: event.target
-                              .value as NotificationTargetOperator,
-                          }))
-                        }
-                      >
-                        <option value="and">AND</option>
-                        <option value="or">OR</option>
-                      </Select>
-                      {form.targetOperator === "or" && (
-                        <p className="text-xs text-orange-400">
-                          OR can target a larger audience.
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">
-                        Account Activity
-                      </label>
-                      <Select
-                        value={form.activeState}
-                        onChange={(event) =>
-                          setForm((current) => ({
-                            ...current,
-                            activeState: event.target.value as
-                              | "all"
-                              | "active"
-                              | "inactive",
-                          }))
-                        }
-                      >
-                        <option value="all">All Accounts</option>
-                        <option value="active">Active Only</option>
-                        <option value="inactive">Inactive Only</option>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">
-                      Element Targets
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {ELEMENT_TARGET_VALUES.map((value) => {
-                        const selected = form.elementTargets.includes(value);
-                        return (
-                          <Button
-                            key={value}
-                            type="button"
-                            variant={selected ? "primary" : "outline"}
-                            size="sm"
-                            onClick={() => toggleElementTarget(value)}
-                          >
-                            {formatLabel(value)}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">
-                      Subscription Targets
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {SUBSCRIPTION_TARGET_VALUES.map((value) => {
-                        const selected =
-                          form.subscriptionTargets.includes(value);
-                        return (
-                          <Button
-                            key={value}
-                            type="button"
-                            variant={selected ? "primary" : "outline"}
-                            size="sm"
-                            onClick={() => toggleSubscriptionTarget(value)}
-                          >
-                            {formatLabel(value)}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">
-                      Account Status
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {ACCOUNT_STATUS_VALUES.map((value) => {
-                        const selected = form.accountStatus.includes(value);
-                        return (
-                          <Button
-                            key={value}
-                            type="button"
-                            variant={selected ? "primary" : "outline"}
-                            size="sm"
-                            onClick={() => toggleAccountStatus(value)}
-                          >
-                            {formatLabel(value)}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
+                <Textarea
+                  value={form.body}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      body: event.target.value,
+                    }))
+                  }
+                  placeholder="Message content..."
+                  className="min-h-28"
+                />
+              </div>
             </div>
 
-            <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-sm">
-              {previewLoading
-                ? "Previewing audience..."
-                : previewCount !== null
-                  ? `${previewLabel ? `${previewLabel} • ` : ""}Estimated recipients: ${previewCount}`
-                  : useAdvancedTargeting && !hasAdvancedFilters
-                    ? "Select at least one advanced filter to preview audience."
-                    : "Select a complete target to preview audience."}
+            <div className="space-y-3 rounded-xl border border-border/60 bg-card/30 p-4">
+              <div>
+                <h4 className="text-sm font-semibold tracking-wide text-foreground/90">
+                  Audience
+                </h4>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Element Targets</label>
+                  <div className="flex flex-wrap gap-2">
+                    {ELEMENT_TARGET_VALUES.map((value) => {
+                      const selected = form.elementTargets.includes(value);
+                      return (
+                        <Button
+                          key={value}
+                          type="button"
+                          variant={selected ? "primary" : "outline"}
+                          size="sm"
+                          onClick={() => toggleElementTarget(value)}
+                        >
+                          {formatLabel(value)}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Subscription Targets
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {SUBSCRIPTION_TARGET_VALUES.map((value) => {
+                      const selected = form.subscriptionTargets.includes(value);
+                      return (
+                        <Button
+                          key={value}
+                          type="button"
+                          variant={selected ? "primary" : "outline"}
+                          size="sm"
+                          onClick={() => toggleSubscriptionTarget(value)}
+                        >
+                          {formatLabel(value)}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {isCustomSubscriptionSelected && (
+                  <div className="space-y-2 rounded-md border border-border/60 bg-background/40 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-sm font-medium">
+                        Custom Plans
+                      </label>
+                      <span className="text-xs text-muted-foreground">
+                        {form.subscriptionPlanIds.length} selected
+                      </span>
+                    </div>
+                    <Input
+                      value={customPlansQuery}
+                      onChange={(event) =>
+                        setCustomPlansQuery(event.target.value)
+                      }
+                      placeholder="Search custom plan name..."
+                    />
+                    <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto pr-1">
+                      {customPlansLoading ? (
+                        <p className="text-xs text-muted-foreground">
+                          Loading custom plans...
+                        </p>
+                      ) : filteredCustomPlans.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          No custom plans found.
+                        </p>
+                      ) : (
+                        filteredCustomPlans.map((plan) => {
+                          const selected = form.subscriptionPlanIds.includes(
+                            plan.id,
+                          );
+                          return (
+                            <Button
+                              key={plan.id}
+                              type="button"
+                              variant={selected ? "primary" : "outline"}
+                              size="sm"
+                              onClick={() => toggleSubscriptionPlanId(plan.id)}
+                              title={plan.id}
+                            >
+                              {plan.plan_name}
+                            </Button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="">
+                {previewLoading ? (
+                  <p className="text-sm text-muted-foreground">
+                    Fetching latest recipient estimate from server...
+                  </p>
+                ) : previewCount !== null ? (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      {previewLabel || "Matched audience"}
+                    </p>
+                    <p className="text-sm text-foreground">
+                      Estimated recipients:
+                      <span className="ml-1 font-semibold tabular-nums">
+                        {previewCount}
+                      </span>
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Select element/subscription targets to preview, or leave
+                    both empty for all users.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border border-border/60 bg-card/20 px-3 py-2 text-xs">
+              <span className="text-muted-foreground">
+                Draft will not send until you click Send in history.
+              </span>
+              <Badge variant={canSaveDraft ? "default" : "outline"}>
+                {canSaveDraft ? "Ready to Save" : "Incomplete"}
+              </Badge>
             </div>
           </div>
 
@@ -947,7 +1051,7 @@ export const Notifications: React.FC = () => {
             <Button
               variant="primary"
               onClick={handleCreateDraft}
-              disabled={isCreating}
+              disabled={isCreating || !canSaveDraft}
             >
               {isCreating ? "Saving..." : "Save Draft"}
             </Button>
@@ -972,6 +1076,16 @@ export const Notifications: React.FC = () => {
                 ? `Send \"${sendTarget.title}\" to ${getTargetLabel(sendTarget)} now?`
                 : "Send this draft now?"}
             </DialogDescription>
+            {sendTarget?.status !== "draft" && (
+              <p className="text-xs text-rose-500">
+                This notification is no longer a draft and cannot be sent.
+              </p>
+            )}
+            {sendTarget?.recipientCount === null && (
+              <p className="text-xs text-muted-foreground">
+                Recipient count is not precomputed for this draft.
+              </p>
+            )}
             {sendTarget?.recipientCount === 0 && (
               <p className="text-xs text-orange-400">
                 This draft currently has zero recipients.
@@ -985,7 +1099,7 @@ export const Notifications: React.FC = () => {
             <Button
               variant="primary"
               onClick={handleSendDraft}
-              disabled={isSending}
+              disabled={isSending || sendTarget?.status !== "draft"}
             >
               {isSending
                 ? "Sending..."
@@ -1011,6 +1125,11 @@ export const Notifications: React.FC = () => {
                 ? `Are you sure you want to delete \"${deleteTarget.title}\"?`
                 : "Are you sure you want to delete this notification?"}
             </DialogDescription>
+            {deleteTarget?.status !== "draft" && (
+              <p className="text-xs text-rose-500">
+                Only draft notifications can be deleted.
+              </p>
+            )}
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
@@ -1019,7 +1138,7 @@ export const Notifications: React.FC = () => {
             <Button
               variant="danger"
               onClick={handleDeleteNotification}
-              disabled={isDeleting}
+              disabled={isDeleting || deleteTarget?.status !== "draft"}
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>

@@ -33,9 +33,11 @@ export const Settings: React.FC<SettingsProps> = ({
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <h2 className="text-3xl font-medium tracking-tight text-primary">
+          <div>
+          <h2 className="text-3xl font-bold text-primary tracking-tight">
             Settings
           </h2>
+        </div>
         </div>
       </div>
 

@@ -3,18 +3,17 @@ import {
   deleteNotificationById,
   getNotificationById,
   getNotifications,
-  previewNotificationAudienceLegacy,
   previewNotificationAudience,
   sendNotificationById,
-  type NotificationAudienceLegacyParams,
   type NotificationsListParams,
 } from '../api/notifications.api';
 import type {
   NotificationCreateInput,
+  NotificationElementTarget,
   NotificationItem,
   NotificationPreviewInput,
   NotificationStatus,
-  NotificationTargetType,
+  NotificationSubscriptionTarget,
 } from '../types/notification';
 
 export interface NotificationRow {
@@ -22,9 +21,12 @@ export interface NotificationRow {
   title: string;
   body: string;
   status: NotificationStatus;
-  targetType: NotificationTargetType;
-  targetValue: string;
-  recipientCount: number;
+  elements: NotificationElementTarget[];
+  subscriptions: NotificationSubscriptionTarget[];
+  subscriptionPlanIds: string[];
+  recipientCount: number | null;
+  createdByName: string;
+  sentAt: string;
   createdAt: string;
 }
 
@@ -41,11 +43,11 @@ function normalizeStatus(value: unknown): NotificationStatus {
   return 'draft';
 }
 
-function normalizeTargetType(value: unknown): NotificationTargetType {
-  const normalized = String(value || '').toLowerCase();
-  if (normalized === 'element') return 'element';
-  if (normalized === 'subscription') return 'subscription';
-  return 'all';
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean);
 }
 
 function unwrapNotificationData(value: unknown) {
@@ -58,17 +60,27 @@ function unwrapNotificationData(value: unknown) {
 
 export function normalizeNotification(value: unknown): NotificationRow {
   const record = asRecord(value);
+  const rawRecipientCount = record.recipient_count ?? record.recipients_count;
+  const normalizedElements = normalizeStringArray(record.elements);
+  const normalizedSubscriptions = normalizeStringArray(record.subscriptions);
+  const normalizedSubscriptionPlanIds = normalizeStringArray(
+    record.subscription_plan_ids,
+  );
 
   return {
     id: String(record.id ?? ''),
     title: String(record.title ?? ''),
     body: String(record.body ?? ''),
     status: normalizeStatus(record.status),
-    targetType: normalizeTargetType(record.target_type),
-    targetValue: String(record.target_value ?? ''),
-    recipientCount: Number(
-      record.recipient_count ?? record.recipients_count ?? 0,
-    ),
+    elements: normalizedElements as NotificationElementTarget[],
+    subscriptions: normalizedSubscriptions as NotificationSubscriptionTarget[],
+    subscriptionPlanIds: normalizedSubscriptionPlanIds,
+    recipientCount:
+      rawRecipientCount === null || rawRecipientCount === undefined
+        ? null
+        : Number(rawRecipientCount),
+    createdByName: String(record.created_by_name ?? ''),
+    sentAt: String(record.sent_at ?? ''),
     createdAt: String(record.created_at ?? record.updated_at ?? ''),
   };
 }
@@ -106,16 +118,7 @@ export async function listNotifications(params: NotificationsListParams = {}) {
 }
 
 export async function previewAudience(params: NotificationPreviewInput) {
-  const useLegacy =
-    typeof params.target_type === 'string' &&
-    !params.target_operator &&
-    !params.target_filters;
-
-  const response = useLegacy
-    ? await previewNotificationAudienceLegacy(
-        params as NotificationAudienceLegacyParams,
-      )
-    : await previewNotificationAudience(params);
+  const response = await previewNotificationAudience(params);
 
   const root = asRecord(response);
   const data = asRecord(root.data);

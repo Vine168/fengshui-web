@@ -1,7 +1,5 @@
 export type NotificationStatus = 'draft' | 'sent' | 'failed';
 
-export type NotificationTargetType = 'all' | 'element' | 'subscription';
-
 export type NotificationElementTarget =
   | 'wood'
   | 'fire'
@@ -18,33 +16,18 @@ export type NotificationSubscriptionTarget =
   | 'year'
   | 'custom';
 
-export type NotificationTargetValue =
-  | NotificationElementTarget
-  | NotificationSubscriptionTarget;
-
-export type NotificationTargetOperator = 'and' | 'or';
-
-export type NotificationAccountStatus = 'active' | 'inactive' | 'suspended';
-
-export interface NotificationTargetFilters {
-  element?: NotificationElementTarget[];
-  subscription?: NotificationSubscriptionTarget[];
-  account_status?: NotificationAccountStatus[];
-  is_active?: boolean | boolean[];
-}
-
 export interface NotificationItem {
   id: string;
   title: string;
   body: string;
   status: NotificationStatus;
-  target_type: NotificationTargetType;
-  target_value?: string | null;
-  target_operator?: NotificationTargetOperator;
-  target_filters?: NotificationTargetFilters | null;
-  recipient_count?: number;
+  elements?: NotificationElementTarget[];
+  subscriptions?: NotificationSubscriptionTarget[];
+  subscription_plan_ids?: string[];
+  recipient_count?: number | null;
   error_message?: string | null;
   created_by_name?: string;
+  sent_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -92,15 +75,13 @@ export interface NotificationDetailResponse {
 export interface NotificationCreateInput {
   title: string;
   body: string;
-  target_type?: NotificationTargetType;
-  target_value?: NotificationTargetValue;
-  target_operator?: NotificationTargetOperator;
-  target_filters?: NotificationTargetFilters;
+  elements?: NotificationElementTarget[];
+  subscriptions?: NotificationSubscriptionTarget[];
+  subscription_plan_ids?: string[];
 }
 
 export interface NotificationPreviewInput {
-  target_type?: NotificationTargetType;
-  target_value?: NotificationTargetValue;
-  target_operator?: NotificationTargetOperator;
-  target_filters?: NotificationTargetFilters;
+  elements?: NotificationElementTarget[];
+  subscriptions?: NotificationSubscriptionTarget[];
+  subscription_plan_ids?: string[];
 }

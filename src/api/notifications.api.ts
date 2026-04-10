@@ -3,23 +3,27 @@ import type {
   NotificationAudiencePreviewResponse,
   NotificationCreateInput,
   NotificationDetailResponse,
+  NotificationElementTarget,
   NotificationPreviewInput,
+  NotificationSubscriptionTarget,
   NotificationsListResponse,
   NotificationStatus,
-  NotificationTargetType,
 } from '../types/notification';
 
 export type NotificationsListParams = {
   page?: number;
   limit?: number;
   status?: NotificationStatus;
-  target_type?: NotificationTargetType;
 };
 
-export type NotificationAudienceLegacyParams = {
-  target_type: NotificationTargetType;
-  target_value?: string;
-};
+function appendCsvParam<T extends string>(
+  query: URLSearchParams,
+  key: string,
+  values?: T[],
+) {
+  if (!values || values.length === 0) return;
+  query.set(key, values.join(','));
+}
 
 export async function getNotifications(params: NotificationsListParams = {}) {
   const query = new URLSearchParams();
@@ -27,7 +31,6 @@ export async function getNotifications(params: NotificationsListParams = {}) {
   if (params.page) query.set('page', String(params.page));
   if (params.limit) query.set('limit', String(Math.min(params.limit, 100)));
   if (params.status) query.set('status', params.status);
-  if (params.target_type) query.set('target_type', params.target_type);
 
   const queryString = query.toString();
   const path = queryString
@@ -37,28 +40,28 @@ export async function getNotifications(params: NotificationsListParams = {}) {
   return http.get<NotificationsListResponse>(path);
 }
 
-export async function previewNotificationAudienceLegacy(
-  params: NotificationAudienceLegacyParams,
+export async function previewNotificationAudience(
+  params: NotificationPreviewInput = {},
 ) {
   const query = new URLSearchParams();
-  query.set('target_type', params.target_type);
-
-  if (params.target_value) {
-    query.set('target_value', params.target_value);
-  }
-
-  return http.get<NotificationAudiencePreviewResponse>(
-    `/admin/notifications/preview-audience?${query.toString()}`,
+  appendCsvParam<NotificationElementTarget>(query, 'elements', params.elements);
+  appendCsvParam<NotificationSubscriptionTarget>(
+    query,
+    'subscriptions',
+    params.subscriptions,
   );
-}
-
-export async function previewNotificationAudience(
-  payload: NotificationPreviewInput,
-) {
-  return http.post<NotificationAudiencePreviewResponse>(
-    '/admin/notifications/preview-audience',
-    payload,
+  appendCsvParam<string>(
+    query,
+    'subscription_plan_ids',
+    params.subscription_plan_ids,
   );
+
+  const queryString = query.toString();
+  const path = queryString
+    ? `/admin/notifications/preview-audience?${queryString}`
+    : '/admin/notifications/preview-audience';
+
+  return http.get<NotificationAudiencePreviewResponse>(path);
 }
 
 export async function createNotification(payload: NotificationCreateInput) {

@@ -211,7 +211,11 @@ export const Users: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Users</h2>
+        <div>
+          <h2 className="text-3xl font-bold text-primary tracking-tight">
+            App Users
+          </h2>
+        </div>
       </div>
 
       <Card className="p-6 overflow-hidden bg-card/40 dark:bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl relative group/card">

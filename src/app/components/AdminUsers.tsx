@@ -1106,9 +1106,11 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2 max-w-2xl">
-          <h2 className="text-3xl font-bold tracking-tight text-foreground/90">
+          <div>
+          <h2 className="text-3xl font-bold text-primary tracking-tight">
             Admin User Management
           </h2>
+        </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

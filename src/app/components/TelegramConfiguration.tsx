@@ -1,422 +1,768 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/Card';
-import { Button } from './ui/Button';
-import { Input, Textarea } from './ui/Form';
-import { MessageCircle, Copy, RefreshCcw, Send, CheckCircle2, Settings, Play, Pause, Bell, Plus, Trash2, FileText, Check, Info } from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from './ui/utils';
-import { Badge } from './ui/Badge';
-import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from './ui/table';
-import { DialogRoot, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/Dialog';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
-import { Checkbox } from './ui/checkbox';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Bell,
+  Check,
+  Copy,
+  RefreshCw,
+  Send,
+  Shield,
+  ToggleLeft,
+  ToggleRight,
+  Zap,
+} from "lucide-react";
+import { toast } from "sonner";
+import { motion } from "motion/react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/Card";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
+import { Input, Textarea } from "./ui/Form";
+import { Switch } from "./ui/Switch";
+import { HttpError } from "../../lib/http";
+import {
+  loadTelegramConfig,
+  loadTelegramFeatures,
+  saveTelegramConfig,
+  saveTelegramFeatures,
+  sendTelegramTestMessage,
+} from "../../services/telegram.service";
+import type {
+  AdminTelegramConfig,
+  AdminTelegramFeatures,
+  TelegramNotifyOn,
+  UpdateAdminTelegramConfigInput,
+} from "../../types/telegram";
 
-interface TelegramGroup {
-  id: string;
-  name: string;
-  chatId: string;
-  events: string[];
-}
-
-const EVENT_TYPES = [
-  { id: 'new_user', label: 'New User', color: 'purple' as const },
-  { id: 'buy_plan', label: 'Buy Plan', color: 'success' as const },
-  { id: 'daily_report', label: 'Daily Report', color: 'warning' as const },
-];
-
-const DEFAULT_TEMPLATES = {
-  new_user: "🆕 *New User Registered*\n\nUser: {{username}}\nEmail: {{email}}\nDate: {{date}}\n\n#NewUser",
-  buy_plan: "💰 *New Purchase*\n\nPlan: {{plan_name}}\nAmount: {{amount}}\nUser: {{username}}\n\n#Sale",
-  daily_report: "📊 *Daily Report*\n\nDate: {{date}}\nNew Users: {{new_users_count}}\nRevenue: {{revenue}}\nActive Users: {{active_users}}"
+const DEFAULT_NOTIFY_ON: TelegramNotifyOn = {
+  payment_paid: false,
+  payment_failed: false,
+  payment_verify_failed: false,
+  login_alert: false,
 };
 
-export const TelegramConfiguration: React.FC = () => {
-  const [botToken, setBotToken] = useState('123456789:ABCdefGHIjklMN0pqrSTUVwxyz');
-  const isMountedRef = useRef(true);
-  
-  // Groups State
-  const [groups, setGroups] = useState<TelegramGroup[]>([
-    { id: '1', name: 'Admin Alerts', chatId: '-100123456789', events: ['new_user', 'buy_plan', 'daily_report'] }
-  ]);
-  const [isAddGroupOpen, setIsAddGroupOpen] = useState(false);
-  const [newGroup, setNewGroup] = useState<{name: string, chatId: string, events: string[]}>({ 
-    name: '', 
-    chatId: '', 
-    events: ['new_user', 'buy_plan'] 
-  });
+const DEFAULT_CONFIG: AdminTelegramConfig = {
+  id: "",
+  bot_token: "",
+  chat_ids: [],
+  is_enabled: false,
+  notify_on: DEFAULT_NOTIFY_ON,
+  source: "",
+  updated_by: null,
+  updated_at: "",
+};
 
-  // Templates State
-  const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
+const DEFAULT_FEATURES: AdminTelegramFeatures = {
+  mobile_otp: false,
+  payment_checkout: false,
+  admin_broadcast_notifications: false,
+  telegram_alerts: false,
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof HttpError) {
+    const details =
+      typeof error.details === "object" && error.details !== null
+        ? (error.details as Record<string, unknown>)
+        : {};
+    const message =
+      typeof details.message === "string" ? details.message : error.message;
+    return message || fallback;
+  }
+
+  return fallback;
+}
+
+function formatLabel(value: string) {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatDateTime(value: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString();
+}
+
+function maskToken(token: string) {
+  if (!token) return "Not configured";
+  if (token.length <= 8) return token;
+  return `${token.slice(0, 6)}••••${token.slice(-4)}`;
+}
+
+function normalizeChatIds(value: string) {
+  return value
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item, index, array) => array.indexOf(item) === index);
+}
+
+function notifyOnSummary(notifyOn: TelegramNotifyOn) {
+  return Object.entries(notifyOn)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => formatLabel(key))
+    .join(", ");
+}
+
+type NotifyField = keyof TelegramNotifyOn;
+type FeatureField = keyof AdminTelegramFeatures;
+
+type StatusCardProps = {
+  label: string;
+  value: string;
+  description: string;
+  icon: React.ReactNode;
+  tone?: "default" | "success" | "warning" | "info";
+};
+
+function StatusCard({
+  label,
+  value,
+  description,
+  icon,
+  tone = "default",
+}: StatusCardProps) {
+  const toneClasses =
+    tone === "success"
+      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-500"
+      : tone === "warning"
+        ? "border-amber-500/25 bg-amber-500/10 text-amber-500"
+        : tone === "info"
+          ? "border-sky-500/25 bg-sky-500/10 text-sky-500"
+          : "border-border/60 bg-card/40 text-foreground";
+
+  return (
+    <Card className={`border ${toneClasses}`}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+              {label}
+            </p>
+            <p className="text-2xl font-semibold tabular-nums">{value}</p>
+            <p className="text-xs text-muted-foreground">{description}</p>
+          </div>
+          <div className="rounded-full border border-white/10 bg-background/40 p-2">
+            {icon}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export const TelegramConfiguration: React.FC = () => {
+  const isMountedRef = useRef(true);
+  const [loading, setLoading] = useState(true);
+  const [configSaving, setConfigSaving] = useState(false);
+  const [featuresSaving, setFeaturesSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [initialConfig, setInitialConfig] = useState(DEFAULT_CONFIG);
+  const [configTokenInput, setConfigTokenInput] = useState("");
+  const [features, setFeatures] = useState(DEFAULT_FEATURES);
+  const [initialFeatures, setInitialFeatures] = useState(DEFAULT_FEATURES);
+
+  const chatIds = useMemo(
+    () => normalizeChatIds(config.chat_ids.join("\n")),
+    [config.chat_ids],
+  );
+
+  const isConfigDirty = useMemo(() => {
+    const normalizedToken = configTokenInput.trim();
+    const tokenChanged = normalizedToken.length > 0;
+    const currentChatIds = normalizeChatIds(config.chat_ids.join("\n"));
+    const initialChatIds = normalizeChatIds(initialConfig.chat_ids.join("\n"));
+
+    return (
+      tokenChanged ||
+      config.is_enabled !== initialConfig.is_enabled ||
+      JSON.stringify(config.notify_on) !==
+        JSON.stringify(initialConfig.notify_on) ||
+      JSON.stringify(currentChatIds) !== JSON.stringify(initialChatIds)
+    );
+  }, [config, initialConfig, configTokenInput]);
+
+  const isFeaturesDirty = useMemo(() => {
+    return JSON.stringify(features) !== JSON.stringify(initialFeatures);
+  }, [features, initialFeatures]);
+
+  const notifyEnabledCount = useMemo(
+    () => Object.values(config.notify_on).filter(Boolean).length,
+    [config.notify_on],
+  );
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [configResponse, featuresResponse] = await Promise.all([
+        loadTelegramConfig(),
+        loadTelegramFeatures(),
+      ]);
+
+      if (!isMountedRef.current) return;
+
+      setConfig(configResponse);
+      setInitialConfig(configResponse);
+      setConfigTokenInput("");
+      setFeatures(featuresResponse);
+      setInitialFeatures(featuresResponse);
+    } catch (error) {
+      if (isMountedRef.current) {
+        toast.error(getErrorMessage(error, "Failed to load Telegram settings"));
+      }
+    } finally {
+      if (isMountedRef.current) setLoading(false);
+    }
+  };
 
   useEffect(() => {
     isMountedRef.current = true;
+    loadData();
+
     return () => {
       isMountedRef.current = false;
     };
   }, []);
 
-  const handleSaveTemplates = () => {
-    if (!isMountedRef.current) return;
-    toast.success('Message templates saved successfully');
+  const updateNotifyField = (field: NotifyField) => {
+    setConfig((current) => ({
+      ...current,
+      notify_on: {
+        ...current.notify_on,
+        [field]: !current.notify_on[field],
+      },
+    }));
   };
 
-  const handleAddGroup = () => {
-    if (!isMountedRef.current) return;
-    if (!newGroup.name || !newGroup.chatId) {
-      toast.error('Please fill in name and chat ID');
-      return;
-    }
-    if (newGroup.events.length === 0) {
-      toast.error('Please select at least one notification type');
-      return;
-    }
-    setGroups([...groups, { id: Date.now().toString(), ...newGroup }]);
-    setNewGroup({ name: '', chatId: '', events: ['new_user', 'buy_plan'] });
-    setIsAddGroupOpen(false);
-    toast.success('Group added successfully');
+  const updateFeatureField = (field: FeatureField) => {
+    setFeatures((current) => ({
+      ...current,
+      [field]: !current[field],
+    }));
   };
 
-  const handleRemoveGroup = (id: string) => {
-    if (!isMountedRef.current) return;
-    setGroups(groups.filter(g => g.id !== id));
-    toast.success('Group removed');
-  };
+  const handleSaveConfig = async () => {
+    const normalizedChatIds = normalizeChatIds(config.chat_ids.join("\n"));
 
-  const toggleEvent = (eventId: string) => {
-    if (!isMountedRef.current) return;
-    setNewGroup(prev => {
-      const exists = prev.events.includes(eventId);
-      return {
-        ...prev,
-        events: exists ? prev.events.filter(e => e !== eventId) : [...prev.events, eventId]
-      };
-    });
-  };
-
-  const sendTestMessage = (type: string, group?: TelegramGroup) => {
-    if (!isMountedRef.current) return;
-    if (groups.length === 0) {
-      toast.error('No groups configured to send test message');
-      return;
-    }
-    
-    const targetGroups = group ? [group] : groups.filter(g => g.events.includes(type));
-    
-    if (targetGroups.length === 0) {
-      toast.warning(`No groups subscribed to '${EVENT_TYPES.find(e => e.id === type)?.label}' notifications`);
+    if (normalizedChatIds.length === 0) {
+      toast.error("Please add at least one chat ID");
       return;
     }
 
-    const groupNames = targetGroups.map(g => g.name).join(', ');
-    toast.success(`Test '${EVENT_TYPES.find(e => e.id === type)?.label}' message sent to: ${groupNames}`);
+    const payload: UpdateAdminTelegramConfigInput = {
+      chat_ids: normalizedChatIds,
+      is_enabled: config.is_enabled,
+      notify_on: config.notify_on,
+      ...(configTokenInput.trim()
+        ? { bot_token: configTokenInput.trim() }
+        : {}),
+    };
+
+    try {
+      setConfigSaving(true);
+      const updatedConfig = await saveTelegramConfig(payload);
+
+      if (!isMountedRef.current) return;
+
+      setConfig(updatedConfig);
+      setInitialConfig(updatedConfig);
+      setConfigTokenInput("");
+      toast.success("Telegram configuration updated");
+    } catch (error) {
+      if (isMountedRef.current) {
+        toast.error(
+          getErrorMessage(error, "Failed to update Telegram configuration"),
+        );
+      }
+    } finally {
+      if (isMountedRef.current) setConfigSaving(false);
+    }
   };
+
+  const handleSaveFeatures = async () => {
+    try {
+      setFeaturesSaving(true);
+      const updatedFeatures = await saveTelegramFeatures(features);
+
+      if (!isMountedRef.current) return;
+
+      setFeatures(updatedFeatures);
+      setInitialFeatures(updatedFeatures);
+      toast.success("Telegram features updated");
+    } catch (error) {
+      if (isMountedRef.current) {
+        toast.error(
+          getErrorMessage(error, "Failed to update Telegram features"),
+        );
+      }
+    } finally {
+      if (isMountedRef.current) setFeaturesSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (config.chat_ids.length === 0) {
+      toast.error("Add at least one chat ID before sending a test message");
+      return;
+    }
+
+    try {
+      setTesting(true);
+      const response = await sendTelegramTestMessage();
+      if (!isMountedRef.current) return;
+      toast.success(`${response.message} to ${response.data.sent_to}`);
+    } catch (error) {
+      if (isMountedRef.current) {
+        toast.error(getErrorMessage(error, "Failed to send test message"));
+      }
+    } finally {
+      if (isMountedRef.current) setTesting(false);
+    }
+  };
+
+  const notifyRows: Array<{
+    key: NotifyField;
+    title: string;
+    description: string;
+  }> = [
+    {
+      key: "payment_paid",
+      title: "Payment paid",
+      description: "Notify admins when a payment is confirmed.",
+    },
+    {
+      key: "payment_failed",
+      title: "Payment failed",
+      description: "Alert the team when payment processing fails.",
+    },
+    {
+      key: "payment_verify_failed",
+      title: "Verification failed",
+      description: "Notify on verification errors during payment review.",
+    },
+    {
+      key: "login_alert",
+      title: "Login alert",
+      description: "Send an alert when an admin signs in.",
+    },
+  ];
+
+  const featureRows: Array<{
+    key: FeatureField;
+    title: string;
+    description: string;
+  }> = [
+    {
+      key: "mobile_otp",
+      title: "Mobile OTP",
+      description: "Enable Telegram support for OTP delivery workflows.",
+    },
+    {
+      key: "payment_checkout",
+      title: "Payment checkout",
+      description: "Use Telegram events around checkout and payment flows.",
+    },
+    {
+      key: "admin_broadcast_notifications",
+      title: "Admin broadcasts",
+      description: "Enable broadcast notifications for administrators.",
+    },
+    {
+      key: "telegram_alerts",
+      title: "Telegram alerts",
+      description: "Master flag for Telegram alert delivery.",
+    },
+  ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-        {/* Telegram Bot Settings */}
-        <Card className="relative overflow-hidden bg-card/40 dark:bg-black/40 backdrop-blur-xl border border-white/10 p-8 space-y-8 shadow-2xl group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-[60px] rounded-full -mr-16 -mt-16 group-hover:bg-primary/10 transition-all duration-700" />
-          
-          <div className="relative">
-            <div className="flex items-center gap-4 mb-2">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-                <Bell className="w-5 h-5 text-primary animate-pulse" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-foreground/90 tracking-tight">Bot Authentication</h3>
-                <p className="text-muted-foreground/60 text-xs uppercase tracking-widest font-black mt-0.5">Primary Gateway Protocol</p>
-              </div>
-            </div>
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="space-y-2">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight text-primary">
+              Telegram Configuration
+            </h2>
           </div>
+        </div>
 
-          <div className="space-y-3">
-             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60 ml-1">Secure Bot Token</label>
-             <div className="relative group/input">
-               <Input 
-                 value={botToken} 
-                 onChange={(e) => setBotToken(e.target.value)}
-                 className="h-12 font-mono text-sm bg-black/5 dark:bg-black/40 border-white/10 focus:border-primary/30 transition-all pl-4 pr-12 rounded-xl"
-                 placeholder="123456789:ABC..."
-                 type="password"
-               />
-               <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/10 group-focus-within/input:text-primary/40 transition-colors">
-                  <Check className="w-4 h-4" />
-               </div>
-             </div>
-             <p className="text-[10px] text-muted-foreground/40 italic ml-1">Issued via Telegram @BotFather protocol</p>
-          </div>
-
-          {/* Premium Info Box */}
-          <div className="bg-primary/5 border border-primary/10 rounded-2xl p-5 relative overflow-hidden group/info">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover/info:opacity-100 transition-opacity duration-500" />
-            <h4 className="text-primary font-bold text-xs flex items-center gap-2 mb-3 tracking-wider uppercase">
-               <div className="w-1 h-3 bg-primary rounded-full shadow-[0_0_8px_rgba(212,175,55,0.06)]" />
-               Initialization Protocol:
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
-              {[
-                { step: "01", text: "Locate @BotFather on the Telegram network" },
-                { step: "02", text: "Execute /newbot command sequence" },
-                { step: "03", text: "Deploy the generated API Token above" },
-                { step: "04", text: "Integrate bot into target communication node" }
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-3 text-xs text-foreground/70">
-                  <span className="text-[10px] font-black text-primary/40">{item.step}</span>
-                  <span className="h-px w-4 bg-white/[0.05]" />
-                  <span>{item.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-
-        {/* Telegram Groups & Channels */}
-        <Card className="bg-card/40 dark:bg-black/40 backdrop-blur-xl border border-white/10 p-8 space-y-8 shadow-2xl overflow-hidden">
-          <div className="flex justify-between items-center mb-2">
-             <div className="flex items-center gap-4">
-              <div className="w-1.5 h-8 bg-primary rounded-full shadow-[0_0_15px_rgba(212,175,55,0.03)]" />
-              <div>
-                <h3 className="text-xl font-bold text-foreground/90 tracking-tight">Communication Nodes</h3>
-                <p className="text-muted-foreground/60 text-xs uppercase tracking-widest font-black mt-0.5">Active Destinations</p>
-              </div>
-            </div>
-            <Button 
-              variant="primary" 
-              className="shadow-[0_0_20px_rgba(212,175,55,0.02)] font-bold text-xs uppercase tracking-widest h-10 px-6 rounded-xl"
-              onClick={() => setIsAddGroupOpen(true)}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Node
-            </Button>
-          </div>
-
-          <div className="relative -mx-8">
-            {groups.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 mx-8 text-center space-y-4 rounded-3xl border border-dashed border-white/5 bg-black/20">
-                 <div className="w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center border border-primary/10">
-                    <Bell className="w-8 h-8 text-primary/20" />
-                 </div>
-                 <div>
-                  <p className="font-bold text-foreground/60 tracking-tight">No Active Nodes</p>
-                  <p className="text-xs text-muted-foreground/40 mt-1">Standby for group integration</p>
-                 </div>
-              </div>
-            ) : (
-              <Table className="border-t border-white/[0.03]">
-                <TableHeader className="bg-white/[0.02]">
-                  <TableRow className="border-b-white/[0.05] hover:bg-transparent">
-                    <TableHead className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60 py-5 pl-8">Network Node</TableHead>
-                    <TableHead className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60 py-5">Access Protocols</TableHead>
-                    <TableHead className="text-[10px] font-black uppercase tracking-[0.2em] text-primary/60 py-5 pr-8 text-right">Ops</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {groups.map((group) => (
-                    <TableRow key={group.id} className="border-b-white/[0.02] hover:bg-white/[0.03] group/row transition-colors">
-                      <TableCell className="py-5 pl-8">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center text-xs font-black text-primary/40 group-hover/row:text-primary transition-colors">
-                            {group.name.substring(0, 2).toUpperCase()}
-                          </div>
-                          <div className="space-y-1">
-                            <p className="font-bold text-foreground/90 leading-none">{group.name}</p>
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-1 h-1 rounded-full bg-emerald-500/40" />
-                              <p className="text-[10px] text-muted-foreground/30 font-mono tracking-tighter uppercase">{group.chatId}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-5">
-                        <div className="flex flex-wrap gap-1.5">
-                          {group.events
-                            .map(eventId => EVENT_TYPES.find(e => e.id === eventId))
-                            .filter((event): event is typeof EVENT_TYPES[number] => event !== undefined)
-                            .map(event => (
-                              <Badge key={event.id} variant="outline" className="text-[8px] font-black uppercase tracking-widest px-1.5 py-0 h-4 border-white/5 bg-white/[0.02] text-muted-foreground/50">
-                                {event.label}
-                              </Badge>
-                            ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-5 pr-8 text-right">
-                        <div className="flex justify-end gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 w-8 p-0 rounded-lg text-primary/60 hover:text-primary hover:bg-primary/10 transition-all"
-                            onClick={() => sendTestMessage('new_user', group)}
-                          >
-                            <Send className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 w-8 p-0 rounded-lg text-destructive/60 hover:text-destructive hover:bg-destructive/10 transition-all"
-                            onClick={() => handleRemoveGroup(group.id)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </Card>
-
-        {/* RIGHT COLUMN: Message Templates */}
-        <Card className="bg-card/40 dark:bg-black/40 backdrop-blur-xl border border-white/10 p-8 min-h-[600px] flex flex-col shadow-2xl relative overflow-hidden group/templates">
-          <div className="absolute bottom-0 right-0 w-64 h-64 bg-primary/5 blur-[80px] rounded-full -mr-32 -mb-32 pointer-events-none" />
-          
-          <div className="flex justify-between items-center mb-10 relative z-10">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-                <FileText className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-foreground/90 tracking-tight">Signal Templates</h3>
-                <p className="text-muted-foreground/60 text-xs uppercase tracking-widest font-black mt-0.5">Payload Formatting Protocols</p>
-              </div>
-            </div>
-            <Button 
-              variant="outline" 
-              className="border-white/10 hover:border-primary/40 hover:text-primary transition-all text-xs font-black uppercase tracking-widest rounded-xl px-5"
-              onClick={handleSaveTemplates}
-            >
-              <Check className="w-4 h-4 mr-2" />
-              Commit Changes
-            </Button>
-          </div>
-
-          <Tabs defaultValue="new_user" className="flex-1 flex flex-col relative z-10">
-                        <TabsList className="w-full bg-white/[0.02] border border-white/[0.05] p-1.5 mb-8 rounded-2xl max-w-2xl backdrop-blur-md">
-              {EVENT_TYPES.map(type => (
-                <TabsTrigger 
-                  key={type.id} 
-                  value={type.id} 
-                  className="flex-1 text-[11px] font-black uppercase tracking-[0.15em] text-white/40 data-[state=active]:bg-primary data-[state=active]:text-black data-[state=active]:shadow-[0_0_15px_rgba(212,175,55,0.03)] rounded-xl transition-all duration-300 py-2.5"
-                >
-                  {type.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            
-            {EVENT_TYPES.map(type => (
-              <TabsContent key={type.id} value={type.id} className="flex-1 flex flex-col space-y-6 animate-in fade-in zoom-in-95 duration-300">
-                <div className="flex-1 relative group/editor">
-                  <div className="absolute -inset-0.5 bg-gradient-to-br from-primary/10 via-transparent to-primary/10 rounded-2xl opacity-0 group-hover/editor:opacity-100 transition-opacity duration-500" />
-                  <Textarea 
-                    className="relative min-h-[400px] font-mono text-sm leading-relaxed resize-none p-6 bg-black/5 dark:bg-black/60 border border-white/10 focus:border-primary/30 rounded-2xl transition-all shadow-inner custom-scrollbar" 
-                    value={templates[type.id as keyof typeof templates]}
-                    onChange={(e) => setTemplates({...templates, [type.id]: e.target.value})}
-                  />
-                  <div className="absolute bottom-6 right-6 flex gap-2">
-                     <Button 
-                       variant="secondary" 
-                       className="h-10 px-4 rounded-xl border border-white/10 bg-black/5 dark:bg-black/60 backdrop-blur-md hover:border-primary/40 hover:text-primary transition-all group/test shadow-2xl"
-                       onClick={() => sendTestMessage(type.id)}
-                     >
-                       <Send className="w-3.5 h-3.5 mr-2 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                       <span className="text-[10px] font-black uppercase tracking-widest">Transmit Test Signal</span>
-                     </Button>
-                  </div>
-                </div>
-                
-                {/* Variables Cheat Sheet */}
-                <div className="bg-primary/5 rounded-2xl p-6 space-y-4 border border-primary/10">
-                  <div className="flex items-center justify-between">
-                    <p className="font-black text-[10px] uppercase tracking-[0.3em] text-primary/60 flex items-center gap-2">
-                      <Info className="w-3.5 h-3.5" />
-                      Injection Ready Variables
-                    </p>
-                    <span className="text-[9px] text-primary/30 font-medium">Protocol Optimized</span>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                    {type.id === 'new_user' && (
-                      <>
-                        {['username', 'email', 'date', 'ip'].map(v => (
-                          <code key={v} className="bg-black/5 dark:bg-black/40 px-2 py-1.5 rounded-lg border border-white/10 text-primary/80 text-[10px] font-mono text-center hover:border-primary/20 transition-colors">{'{{' + v + '}}'}</code>
-                        ))}
-                      </>
-                    )}
-                    {type.id === 'buy_plan' && (
-                      <>
-                        {['username', 'plan_name', 'amount', 'currency'].map(v => (
-                          <code key={v} className="bg-black/5 dark:bg-black/40 px-2 py-1.5 rounded-lg border border-white/10 text-primary/80 text-[10px] font-mono text-center hover:border-primary/20 transition-colors">{'{{' + v + '}}'}</code>
-                        ))}
-                      </>
-                    )}
-                    {type.id === 'daily_report' && (
-                      <>
-                         {['date', 'new_users_count', 'revenue', 'active_users'].map(v => (
-                          <code key={v} className="bg-black/5 dark:bg-black/40 px-2 py-1.5 rounded-lg border border-white/10 text-primary/80 text-[10px] font-mono text-center hover:border-primary/20 transition-colors">{'{{' + v + '}}'}</code>
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </div>
-              </TabsContent>
-            ))}
-          </Tabs>
-        </Card>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            leftIcon={<RefreshCw className="h-4 w-4" />}
+            onClick={loadData}
+          >
+            Refresh
+          </Button>
+          <Button
+            variant="primary"
+            leftIcon={<Send className="h-4 w-4" />}
+            onClick={handleTest}
+            isLoading={testing}
+            disabled={loading || testing}
+          >
+            Send Test Message
+          </Button>
+        </div>
       </div>
 
-      <DialogRoot open={isAddGroupOpen} onOpenChange={setIsAddGroupOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Telegram Group</DialogTitle>
-            <DialogDescription>
-              Configure a new group for receiving notifications.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Group Name</label>
-              <Input 
-                placeholder="e.g. Alerts Channel" 
-                value={newGroup.name}
-                onChange={(e) => setNewGroup({...newGroup, name: e.target.value})}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Chat ID</label>
-              <Input 
-                placeholder="e.g. -100123456789" 
-                value={newGroup.chatId}
-                onChange={(e) => setNewGroup({...newGroup, chatId: e.target.value})}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Notification Types</label>
-              <div className="space-y-2 border border-border rounded-lg p-3 bg-secondary/5">
-                {EVENT_TYPES.map(event => (
-                  <div key={event.id} className="flex items-center space-x-2">
-                    <Checkbox 
-                      id={`event-${event.id}`} 
-                      checked={newGroup.events.includes(event.id)}
-                      onCheckedChange={() => toggleEvent(event.id)}
-                    />
-                    <label 
-                      htmlFor={`event-${event.id}`} 
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      {event.label}
-                    </label>
-                  </div>
-                ))}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatusCard
+          label="Service"
+          value={config.is_enabled ? "Enabled" : "Disabled"}
+          description="Main Telegram integration switch."
+          icon={
+            config.is_enabled ? (
+              <Check className="h-5 w-5 text-emerald-500" />
+            ) : (
+              <ToggleLeft className="h-5 w-5 text-muted-foreground" />
+            )
+          }
+          tone={config.is_enabled ? "success" : "warning"}
+        />
+        <StatusCard
+          label="Chat IDs"
+          value={String(config.chat_ids.length)}
+          description="Configured destinations for notifications."
+          icon={<Bell className="h-5 w-5 text-sky-500" />}
+          tone="info"
+        />
+        <StatusCard
+          label="Alerts"
+          value={String(notifyEnabledCount)}
+          description="Active notification triggers."
+          icon={<Zap className="h-5 w-5 text-amber-500" />}
+          tone="warning"
+        />
+        <StatusCard
+          label="Source"
+          value={config.source || "-"}
+          description={`Updated ${formatDateTime(config.updated_at)}`}
+          icon={<Shield className="h-5 w-5 text-primary" />}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,0.95fr)]">
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-border/60 bg-card/30">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle>Telegram Bot Setup</CardTitle>
+                <CardDescription>
+                  Edit the bot token, target chat IDs, and event routing for the
+                  currently loaded configuration.
+                </CardDescription>
               </div>
+              <Badge variant="outline" className="w-fit">
+                {config.id
+                  ? `Config ${config.id.slice(0, 8)}`
+                  : "No config loaded"}
+              </Badge>
             </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setIsAddGroupOpen(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleAddGroup}>Add Group</Button>
-          </DialogFooter>
-        </DialogContent>
-      </DialogRoot>
+          </CardHeader>
+          <CardContent className="space-y-6 p-6">
+            {loading ? (
+              <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-border/70 bg-background/30 text-sm text-muted-foreground">
+                Loading Telegram configuration...
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-border/60 bg-muted/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                      Current token
+                    </p>
+                    <p className="mt-2 font-mono text-sm text-foreground break-all">
+                      {maskToken(config.bot_token)}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Leave the input below empty to keep the current token.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                      Updated by
+                    </p>
+                    <p className="mt-2 text-sm font-medium">
+                      {config.updated_by || "-"}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {formatDateTime(config.updated_at)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-border/60 bg-card/30 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">
+                        Bot Token
+                      </h4>
+                      <p className="text-xs text-muted-foreground">
+                        Paste a new bot token only if you want to replace the
+                        current one.
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="text-[11px]">
+                      Optional update
+                    </Badge>
+                  </div>
+                  <Input
+                    value={configTokenInput}
+                    onChange={(event) =>
+                      setConfigTokenInput(event.target.value)
+                    }
+                    placeholder="Enter a new bot token"
+                  />
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-border/60 bg-card/30 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">
+                        Chat IDs
+                      </h4>
+                      <p className="text-xs text-muted-foreground">
+                        One chat ID per line. Commas are also supported.
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="text-[11px]">
+                      {chatIds.length} target{chatIds.length === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <Textarea
+                    value={config.chat_ids.join("\n")}
+                    onChange={(event) =>
+                      setConfig((current) => ({
+                        ...current,
+                        chat_ids: normalizeChatIds(event.target.value),
+                      }))
+                    }
+                    placeholder="-1003754307755"
+                    className="min-h-28 font-mono text-sm"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    {chatIds.length === 0 ? (
+                      <Badge variant="outline">No chat IDs set</Badge>
+                    ) : (
+                      chatIds.map((chatId) => (
+                        <Badge
+                          key={chatId}
+                          variant="outline"
+                          className="font-mono"
+                        >
+                          {chatId}
+                        </Badge>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-border/60 bg-card/30 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">
+                        Routing
+                      </h4>
+                      <p className="text-xs text-muted-foreground">
+                        Enable Telegram globally and choose which admin events
+                        should notify.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs">
+                      <span className="text-muted-foreground">Enabled</span>
+                      <Switch
+                        checked={config.is_enabled}
+                        onCheckedChange={(checked) =>
+                          setConfig((current) => ({
+                            ...current,
+                            is_enabled: checked,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {notifyRows.map((row) => {
+                      const enabled = config.notify_on[row.key];
+                      return (
+                        <motion.div
+                          key={row.key}
+                          whileHover={{ y: -2 }}
+                          transition={{ duration: 0.18 }}
+                          className="rounded-xl border border-border/60 bg-background/40 p-4"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-1">
+                              <p className="font-medium text-foreground">
+                                {row.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {row.description}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={enabled}
+                              onCheckedChange={() => updateNotifyField(row.key)}
+                              disabled={!config.is_enabled}
+                            />
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                  {!config.is_enabled && (
+                    <p className="text-xs text-muted-foreground">
+                      Telegram is disabled, so routing toggles are visible but
+                      inactive until you enable the service.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/20 px-4 py-3">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      Save configuration
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Updates the Telegram bot token, chat IDs, enabled state,
+                      and alert triggers.
+                    </p>
+                  </div>
+                  <Button
+                    variant="primary"
+                    onClick={handleSaveConfig}
+                    isLoading={configSaving}
+                    disabled={configSaving || !isConfigDirty}
+                    leftIcon={<Check className="h-4 w-4" />}
+                  >
+                    Save Telegram Config
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          <Card className="overflow-hidden">
+            <CardHeader className="border-b border-border/60 bg-card/30">
+              <CardTitle>Feature Flags</CardTitle>
+              <CardDescription>
+                Control which platform modules can use Telegram.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 p-4">
+              {featureRows.map((row) => {
+                const enabled = features[row.key];
+                return (
+                  <div
+                    key={row.key}
+                    className="flex items-start justify-between gap-4 rounded-xl border border-border/60 bg-background/40 p-4"
+                  >
+                    <div className="space-y-1">
+                      <p className="font-medium text-foreground">{row.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {row.description}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={enabled}
+                      onCheckedChange={() => updateFeatureField(row.key)}
+                      disabled={loading || featuresSaving}
+                    />
+                  </div>
+                );
+              })}
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/20 px-4 py-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    Save feature flags
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Applies the current Telegram feature availability settings.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleSaveFeatures}
+                  isLoading={featuresSaving}
+                  disabled={featuresSaving || !isFeaturesDirty}
+                  leftIcon={<Copy className="h-4 w-4" />}
+                >
+                  Save Flags
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Current Routing Summary</CardTitle>
+              <CardDescription>
+                Quick glance at the active Telegram notification setup.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-xl border border-border/60 bg-background/40 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Active notifications
+                </p>
+                <p className="mt-2 text-sm text-foreground">
+                  {notifyOnSummary(config.notify_on) || "None enabled"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-background/40 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Chat destinations
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {chatIds.length > 0 ? (
+                    chatIds.map((chatId) => (
+                      <Badge
+                        key={chatId}
+                        variant="outline"
+                        className="font-mono"
+                      >
+                        {chatId}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      No destinations configured
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-background/40 p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                  Integration status
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  {config.is_enabled ? (
+                    <Check className="h-4 w-4 text-emerald-500" />
+                  ) : (
+                    <ToggleRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm text-foreground">
+                    {config.is_enabled ? "Ready for delivery" : "Disabled"}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 };

@@ -1,0 +1,104 @@
+name: CI/CD Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ─── 1. Checkout ────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ─── 2. Setup pnpm ──────────────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      # ─── 3. Setup Node ──────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      # ─── 4. Install dependencies ────────────────────────────────────
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ─── 5a. Build for Production (main branch) ─────────────────────
+      - name: Build (Production)
+        if: github.ref == 'refs/heads/main'
+        env:
+          VITE_API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
+        run: pnpm build
+
+      # ─── 5b. Build for Staging (dev branch) ─────────────────────────
+      - name: Build (Staging)
+        if: github.ref == 'refs/heads/dev'
+        env:
+          VITE_API_BASE_URL: ${{ secrets.DEV_API_BASE_URL }}
+        run: pnpm build
+
+      # ─── 6a. Deploy to Production server ────────────────────────────
+      - name: Deploy dist to Production
+        if: github.ref == 'refs/heads/main'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: 22
+          source: "dist/*"
+          target: "/var/www/fengshui-web"
+          strip_components: 1
+          rm: true
+
+      # ─── 6b. Deploy to Staging server ───────────────────────────────
+      - name: Deploy dist to Staging
+        if: github.ref == 'refs/heads/dev'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          port: 22
+          source: "dist/*"
+          target: "/var/www/fengshui-staging"
+          strip_components: 1
+          rm: true
+
+      # ─── 7a. Reload Nginx on Production ─────────────────────────────
+      - name: Reload Nginx (Production)
+        if: github.ref == 'refs/heads/main'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          port: 22
+          script: sudo systemctl reload nginx
+
+      # ─── 7b. Reload Nginx on Staging ────────────────────────────────
+      - name: Reload Nginx (Staging)
+        if: github.ref == 'refs/heads/dev'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          port: 22
+          script: sudo systemctl reload nginx
+
+      # ─── 8. Notify success ──────────────────────────────────────────
+      - name: Deployment summary
+        run: |
+          echo "✅ Deployed branch '${{ github.ref_name }}' successfully"
+          echo "Commit: ${{ github.sha }}"
+          echo "By: ${{ github.actor }}"
