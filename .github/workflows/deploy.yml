@@ -15,36 +15,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ─── 2. Setup pnpm ──────────────────────────────────────────────
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
-      # ─── 3. Setup Node ──────────────────────────────────────────────
+      # ─── 2. Setup Node ──────────────────────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
+          cache: 'npm'
 
-      # ─── 4. Install dependencies ────────────────────────────────────
+      # ─── 3. Install dependencies ────────────────────────────────────
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
-      # ─── 5a. Build for Production (main branch) ─────────────────────
+      # ─── 4a. Build for Production (main branch) ─────────────────────
       - name: Build (Production)
         if: github.ref == 'refs/heads/main'
         env:
           VITE_API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}
-        run: pnpm build
+        run: npm run build
 
-      # ─── 5b. Build for Staging (dev branch) ─────────────────────────
+      # ─── 4b. Build for Staging (dev branch) ─────────────────────────
       - name: Build (Staging)
         if: github.ref == 'refs/heads/dev'
         env:
           VITE_API_BASE_URL: ${{ secrets.DEV_API_BASE_URL }}
-        run: pnpm build
+        run: npm run build
 
       # ─── 6a. Deploy to Production server ────────────────────────────
       - name: Deploy dist to Production
