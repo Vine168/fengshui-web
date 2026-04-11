@@ -9,7 +9,21 @@ RUN npm ci --legacy-peer-deps
 COPY . .
 RUN npm run build
 
-# ─── Stage 2: Production (nginx) ─────────────────────────────────────────────
+# ─── Stage 2: Development ────────────────────────────────────────────────────
+FROM node:20-alpine AS dev
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --legacy-peer-deps
+
+COPY . .
+
+EXPOSE 5173
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+
+# ─── Stage 3: Production (nginx) ─────────────────────────────────────────────
 FROM nginx:alpine AS production
 
 COPY --from=builder /app/dist /usr/share/nginx/html
