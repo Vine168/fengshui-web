@@ -3,6 +3,7 @@ import type {
   AdminTelegramConfigResponse,
   AdminTelegramFeaturesResponse,
   AdminTelegramTestResponse,
+  TelegramTestMessageInput,
   UpdateAdminTelegramConfigInput,
   UpdateAdminTelegramFeaturesInput,
 } from '../types/telegram';
@@ -23,6 +24,6 @@ export async function updateTelegramFeatures(payload: UpdateAdminTelegramFeature
   return http.put<AdminTelegramFeaturesResponse>('/admin/telegram/features', payload);
 }
 
-export async function testTelegramNotification() {
-  return http.post<AdminTelegramTestResponse>('/admin/telegram/test', {});
+export async function testTelegramNotification(payload?: TelegramTestMessageInput) {
+  return http.post<AdminTelegramTestResponse>('/admin/telegram/test', payload ?? {});
 }

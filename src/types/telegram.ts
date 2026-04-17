@@ -1,9 +1,4 @@
-export type TelegramNotifyOn = {
-  payment_paid: boolean;
-  payment_failed: boolean;
-  payment_verify_failed: boolean;
-  login_alert: boolean;
-};
+export type TelegramNotifyOn = Record<string, boolean>;
 
 export type AdminTelegramConfig = {
   id: string;
@@ -43,6 +38,10 @@ export type AdminTelegramFeaturesResponse = {
 };
 
 export type UpdateAdminTelegramFeaturesInput = AdminTelegramFeatures;
+
+export type TelegramTestMessageInput = {
+  chat_id?: string;
+};
 
 export type AdminTelegramTestResponse = {
   code: number;

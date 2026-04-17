@@ -21,12 +21,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function normalizeNotifyOn(value: unknown): TelegramNotifyOn {
   const record = asRecord(value);
-  return {
-    payment_paid: Boolean(record.payment_paid),
-    payment_failed: Boolean(record.payment_failed),
-    payment_verify_failed: Boolean(record.payment_verify_failed),
-    login_alert: Boolean(record.login_alert),
-  };
+  return Object.entries(record).reduce<TelegramNotifyOn>((acc, [key, raw]) => {
+    acc[key] = Boolean(raw);
+    return acc;
+  }, {});
 }
 
 export function normalizeTelegramConfig(value: unknown): AdminTelegramConfig {
@@ -80,6 +78,6 @@ export async function saveTelegramFeatures(payload: UpdateAdminTelegramFeaturesI
   return normalizeTelegramFeatures(response.data);
 }
 
-export async function sendTelegramTestMessage() {
-  return testTelegramNotification();
+export async function sendTelegramTestMessage(chatId?: string) {
+  return testTelegramNotification(chatId ? { chat_id: chatId } : {});
 }

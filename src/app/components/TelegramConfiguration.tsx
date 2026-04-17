@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   Check,
-  Copy,
+  Eye,
+  EyeOff,
   RefreshCw,
   Send,
   Shield,
@@ -12,18 +13,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "./ui/Card";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/Card";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 import { Input, Textarea } from "./ui/Form";
 import { Switch } from "./ui/Switch";
 import { HttpError } from "../../lib/http";
+import { useAdminAccess } from "../../hooks/useAdminAccess";
 import {
   loadTelegramConfig,
   loadTelegramFeatures,
@@ -43,6 +39,13 @@ const DEFAULT_NOTIFY_ON: TelegramNotifyOn = {
   payment_failed: false,
   payment_verify_failed: false,
   login_alert: false,
+  promo_code_event: false,
+  subscription_plan_event: false,
+  app_user_event: false,
+  system_user_event: false,
+  bank_config_event: false,
+  role_event: false,
+  settings_event: false,
 };
 
 const DEFAULT_CONFIG: AdminTelegramConfig = {
@@ -161,6 +164,7 @@ function StatusCard({
 
 export const TelegramConfiguration: React.FC = () => {
   const isMountedRef = useRef(true);
+  const { hasAnyPermission, isSuperUser } = useAdminAccess();
   const [loading, setLoading] = useState(true);
   const [configSaving, setConfigSaving] = useState(false);
   const [featuresSaving, setFeaturesSaving] = useState(false);
@@ -169,6 +173,7 @@ export const TelegramConfiguration: React.FC = () => {
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [initialConfig, setInitialConfig] = useState(DEFAULT_CONFIG);
   const [configTokenInput, setConfigTokenInput] = useState("");
+  const [showToken, setShowToken] = useState(true);
   const [features, setFeatures] = useState(DEFAULT_FEATURES);
   const [initialFeatures, setInitialFeatures] = useState(DEFAULT_FEATURES);
 
@@ -179,7 +184,8 @@ export const TelegramConfiguration: React.FC = () => {
 
   const isConfigDirty = useMemo(() => {
     const normalizedToken = configTokenInput.trim();
-    const tokenChanged = normalizedToken.length > 0;
+    const initialToken = initialConfig.bot_token.trim();
+    const tokenChanged = normalizedToken !== initialToken;
     const currentChatIds = normalizeChatIds(config.chat_ids.join("\n"));
     const initialChatIds = normalizeChatIds(initialConfig.chat_ids.join("\n"));
 
@@ -201,6 +207,11 @@ export const TelegramConfiguration: React.FC = () => {
     [config.notify_on],
   );
 
+  const canUpdateTelegram =
+    isSuperUser || hasAnyPermission(["telegram.update"]);
+  const canSendTest =
+    isSuperUser || hasAnyPermission(["telegram.connect", "telegram.update"]);
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -213,7 +224,7 @@ export const TelegramConfiguration: React.FC = () => {
 
       setConfig(configResponse);
       setInitialConfig(configResponse);
-      setConfigTokenInput("");
+      setConfigTokenInput(configResponse.bot_token ?? "");
       setFeatures(featuresResponse);
       setInitialFeatures(featuresResponse);
     } catch (error) {
@@ -251,45 +262,63 @@ export const TelegramConfiguration: React.FC = () => {
     }));
   };
 
-  const handleSaveConfig = async () => {
+  const persistConfig = async (showSuccessToast: boolean) => {
+    if (!canUpdateTelegram) {
+      toast.error("You do not have permission to update Telegram settings");
+      return null;
+    }
+
     const normalizedChatIds = normalizeChatIds(config.chat_ids.join("\n"));
 
     if (normalizedChatIds.length === 0) {
       toast.error("Please add at least one chat ID");
-      return;
+      return null;
     }
 
     const payload: UpdateAdminTelegramConfigInput = {
       chat_ids: normalizedChatIds,
       is_enabled: config.is_enabled,
       notify_on: config.notify_on,
-      ...(configTokenInput.trim()
-        ? { bot_token: configTokenInput.trim() }
-        : {}),
+      bot_token: configTokenInput.trim(),
     };
 
     try {
       setConfigSaving(true);
       const updatedConfig = await saveTelegramConfig(payload);
 
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return null;
 
       setConfig(updatedConfig);
       setInitialConfig(updatedConfig);
-      setConfigTokenInput("");
-      toast.success("Telegram configuration updated");
+      setConfigTokenInput(updatedConfig.bot_token ?? "");
+
+      if (showSuccessToast) {
+        toast.success("Telegram configuration updated");
+      }
+
+      return updatedConfig;
     } catch (error) {
       if (isMountedRef.current) {
         toast.error(
           getErrorMessage(error, "Failed to update Telegram configuration"),
         );
       }
+      return null;
     } finally {
       if (isMountedRef.current) setConfigSaving(false);
     }
   };
 
+  const handleSaveConfig = async () => {
+    await persistConfig(true);
+  };
+
   const handleSaveFeatures = async () => {
+    if (!canUpdateTelegram) {
+      toast.error("You do not have permission to update Telegram features");
+      return;
+    }
+
     try {
       setFeaturesSaving(true);
       const updatedFeatures = await saveTelegramFeatures(features);
@@ -311,14 +340,33 @@ export const TelegramConfiguration: React.FC = () => {
   };
 
   const handleTest = async () => {
-    if (config.chat_ids.length === 0) {
+    if (!canSendTest) {
+      toast.error("You do not have permission to send Telegram test");
+      return;
+    }
+
+    const normalizedChatIds = normalizeChatIds(config.chat_ids.join("\n"));
+
+    if (normalizedChatIds.length === 0) {
       toast.error("Add at least one chat ID before sending a test message");
       return;
     }
 
+    if (isConfigDirty && canUpdateTelegram) {
+      const updated = await persistConfig(false);
+      if (!updated) return;
+    }
+
+    if (isConfigDirty && !canUpdateTelegram) {
+      toast.message("Testing with saved settings", {
+        description:
+          "Unsaved changes cannot be applied because your role cannot update Telegram settings.",
+      });
+    }
+
     try {
       setTesting(true);
-      const response = await sendTelegramTestMessage();
+      const response = await sendTelegramTestMessage(normalizedChatIds[0]);
       if (!isMountedRef.current) return;
       toast.success(`${response.message} to ${response.data.sent_to}`);
     } catch (error) {
@@ -334,28 +382,64 @@ export const TelegramConfiguration: React.FC = () => {
     key: NotifyField;
     title: string;
     description: string;
-  }> = [
-    {
-      key: "payment_paid",
-      title: "Payment paid",
-      description: "Notify admins when a payment is confirmed.",
-    },
-    {
-      key: "payment_failed",
-      title: "Payment failed",
-      description: "Alert the team when payment processing fails.",
-    },
-    {
-      key: "payment_verify_failed",
-      title: "Verification failed",
-      description: "Notify on verification errors during payment review.",
-    },
-    {
-      key: "login_alert",
-      title: "Login alert",
-      description: "Send an alert when an admin signs in.",
-    },
-  ];
+  }> = Object.keys(config.notify_on).map((key) => {
+    const typedKey = key as NotifyField;
+    const titles: Record<string, string> = {
+      payment_paid: "Payment paid",
+      payment_failed: "Payment failed",
+      payment_verify_failed: "Verification failed",
+      login_alert: "Login alert",
+      promo_code_event: "Promo code",
+      subscription_plan_event: "Subscription plan",
+      app_user_event: "App user",
+      system_user_event: "System user",
+      bank_config_event: "Bank config",
+      role_event: "Role",
+      settings_event: "Settings",
+    };
+
+    return {
+      key: typedKey,
+      title: titles[key] ?? formatLabel(key),
+      description: "Notification event",
+    };
+  });
+
+  const notifyGroups = useMemo(() => {
+    type NotifyGroupKey = "payments" | "users" | "system" | "other";
+    const sections: Array<{
+      key: NotifyGroupKey;
+      title: string;
+      rows: typeof notifyRows;
+    }> = [
+      { key: "payments", title: "Payments", rows: [] },
+      { key: "users", title: "Users", rows: [] },
+      { key: "system", title: "System", rows: [] },
+      { key: "other", title: "Other", rows: [] },
+    ];
+
+    const byKey: Record<string, NotifyGroupKey> = {
+      payment_paid: "payments",
+      payment_failed: "payments",
+      payment_verify_failed: "payments",
+      promo_code_event: "payments",
+      subscription_plan_event: "payments",
+      login_alert: "users",
+      app_user_event: "users",
+      system_user_event: "users",
+      bank_config_event: "system",
+      role_event: "system",
+      settings_event: "system",
+    };
+
+    for (const row of notifyRows) {
+      const sectionKey = byKey[row.key] ?? "other";
+      const section = sections.find((item) => item.key === sectionKey);
+      if (section) section.rows.push(row);
+    }
+
+    return sections.filter((section) => section.rows.length > 0);
+  }, [notifyRows]);
 
   const featureRows: Array<{
     key: FeatureField;
@@ -365,35 +449,31 @@ export const TelegramConfiguration: React.FC = () => {
     {
       key: "mobile_otp",
       title: "Mobile OTP",
-      description: "Enable Telegram support for OTP delivery workflows.",
+      description: "OTP delivery via Telegram",
     },
     {
       key: "payment_checkout",
       title: "Payment checkout",
-      description: "Use Telegram events around checkout and payment flows.",
+      description: "Payment flow notifications",
     },
     {
       key: "admin_broadcast_notifications",
       title: "Admin broadcasts",
-      description: "Enable broadcast notifications for administrators.",
+      description: "Broadcast to administrators",
     },
     {
       key: "telegram_alerts",
       title: "Telegram alerts",
-      description: "Master flag for Telegram alert delivery.",
+      description: "Master toggle for all alerts",
     },
   ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-2">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight text-primary">
-              Telegram Configuration
-            </h2>
-          </div>
-        </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-3xl font-bold tracking-tight text-primary">
+          Telegram
+        </h2>
 
         <div className="flex flex-wrap gap-2">
           <Button
@@ -408,9 +488,9 @@ export const TelegramConfiguration: React.FC = () => {
             leftIcon={<Send className="h-4 w-4" />}
             onClick={handleTest}
             isLoading={testing}
-            disabled={loading || testing}
+            disabled={loading || testing || configSaving || !canSendTest}
           >
-            Send Test Message
+            Test
           </Button>
         </div>
       </div>
@@ -419,7 +499,7 @@ export const TelegramConfiguration: React.FC = () => {
         <StatusCard
           label="Service"
           value={config.is_enabled ? "Enabled" : "Disabled"}
-          description="Main Telegram integration switch."
+          description="Integration status"
           icon={
             config.is_enabled ? (
               <Check className="h-5 w-5 text-emerald-500" />
@@ -432,21 +512,21 @@ export const TelegramConfiguration: React.FC = () => {
         <StatusCard
           label="Chat IDs"
           value={String(config.chat_ids.length)}
-          description="Configured destinations for notifications."
+          description="Destinations"
           icon={<Bell className="h-5 w-5 text-sky-500" />}
           tone="info"
         />
         <StatusCard
-          label="Alerts"
+          label="Notifications"
           value={String(notifyEnabledCount)}
-          description="Active notification triggers."
+          description="Active triggers"
           icon={<Zap className="h-5 w-5 text-amber-500" />}
           tone="warning"
         />
         <StatusCard
-          label="Source"
+          label="Updated"
           value={config.source || "-"}
-          description={`Updated ${formatDateTime(config.updated_at)}`}
+          description={formatDateTime(config.updated_at)}
           icon={<Shield className="h-5 w-5 text-primary" />}
         />
       </div>
@@ -456,11 +536,7 @@ export const TelegramConfiguration: React.FC = () => {
           <CardHeader className="border-b border-border/60 bg-card/30">
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <CardTitle>Telegram Bot Setup</CardTitle>
-                <CardDescription>
-                  Edit the bot token, target chat IDs, and event routing for the
-                  currently loaded configuration.
-                </CardDescription>
+                <CardTitle>Bot Setup</CardTitle>
               </div>
               <Badge variant="outline" className="w-fit">
                 {config.id
@@ -476,17 +552,50 @@ export const TelegramConfiguration: React.FC = () => {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div className="rounded-xl border border-border/60 bg-muted/10 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                       Current token
                     </p>
                     <p className="mt-2 font-mono text-sm text-foreground break-all">
-                      {maskToken(config.bot_token)}
+                      {showToken
+                        ? config.bot_token || "Not configured"
+                        : maskToken(config.bot_token)}
                     </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Leave the input below empty to keep the current token.
+                    <button
+                      type="button"
+                      onClick={() => setShowToken((current) => !current)}
+                      className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      {showToken ? (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                      {showToken ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  <div className="rounded-xl border border-border/60 bg-muted/10 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                      Current chat IDs
                     </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {chatIds.length > 0 ? (
+                        chatIds.map((chatId) => (
+                          <Badge
+                            key={chatId}
+                            variant="outline"
+                            className="font-mono"
+                          >
+                            {chatId}
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          No chat IDs
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="rounded-xl border border-border/60 bg-muted/10 p-4">
                     <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
@@ -503,38 +612,29 @@ export const TelegramConfiguration: React.FC = () => {
 
                 <div className="space-y-3 rounded-xl border border-border/60 bg-card/30 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-foreground">
-                        Bot Token
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        Paste a new bot token only if you want to replace the
-                        current one.
-                      </p>
-                    </div>
+                    <h4 className="text-sm font-semibold text-foreground">
+                      Bot Token
+                    </h4>
                     <Badge variant="outline" className="text-[11px]">
-                      Optional update
+                      Optional
                     </Badge>
                   </div>
                   <Input
+                    type={showToken ? "text" : "password"}
                     value={configTokenInput}
                     onChange={(event) =>
                       setConfigTokenInput(event.target.value)
                     }
-                    placeholder="Enter a new bot token"
+                    placeholder="Bot token"
+                    disabled={!canUpdateTelegram}
                   />
                 </div>
 
                 <div className="space-y-3 rounded-xl border border-border/60 bg-card/30 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-foreground">
-                        Chat IDs
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        One chat ID per line. Commas are also supported.
-                      </p>
-                    </div>
+                    <h4 className="text-sm font-semibold text-foreground">
+                      Chat IDs
+                    </h4>
                     <Badge variant="outline" className="text-[11px]">
                       {chatIds.length} target{chatIds.length === 1 ? "" : "s"}
                     </Badge>
@@ -547,8 +647,9 @@ export const TelegramConfiguration: React.FC = () => {
                         chat_ids: normalizeChatIds(event.target.value),
                       }))
                     }
-                    placeholder="-1003754307755"
+                    placeholder="-1001234567890"
                     className="min-h-28 font-mono text-sm"
+                    disabled={!canUpdateTelegram}
                   />
                   <div className="flex flex-wrap gap-2">
                     {chatIds.length === 0 ? (
@@ -569,17 +670,11 @@ export const TelegramConfiguration: React.FC = () => {
 
                 <div className="space-y-3 rounded-xl border border-border/60 bg-card/30 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h4 className="text-sm font-semibold text-foreground">
-                        Routing
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        Enable Telegram globally and choose which admin events
-                        should notify.
-                      </p>
-                    </div>
+                    <h4 className="text-sm font-semibold text-foreground">
+                      Event Routing
+                    </h4>
                     <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/50 px-3 py-1.5 text-xs">
-                      <span className="text-muted-foreground">Enabled</span>
+                      <span className="text-muted-foreground">Active</span>
                       <Switch
                         checked={config.is_enabled}
                         onCheckedChange={(checked) =>
@@ -588,65 +683,74 @@ export const TelegramConfiguration: React.FC = () => {
                             is_enabled: checked,
                           }))
                         }
+                        disabled={!canUpdateTelegram}
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {notifyRows.map((row) => {
-                      const enabled = config.notify_on[row.key];
-                      return (
-                        <motion.div
-                          key={row.key}
-                          whileHover={{ y: -2 }}
-                          transition={{ duration: 0.18 }}
-                          className="rounded-xl border border-border/60 bg-background/40 p-4"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="space-y-1">
-                              <p className="font-medium text-foreground">
-                                {row.title}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {row.description}
-                              </p>
-                            </div>
-                            <Switch
-                              checked={enabled}
-                              onCheckedChange={() => updateNotifyField(row.key)}
-                              disabled={!config.is_enabled}
-                            />
-                          </div>
-                        </motion.div>
-                      );
-                    })}
+                  <div className="space-y-4">
+                    {notifyGroups.map((group) => (
+                      <div key={group.key} className="space-y-2">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          {group.title}
+                        </p>
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          {group.rows.map((row) => {
+                            const enabled = config.notify_on[row.key];
+                            return (
+                              <motion.div
+                                key={row.key}
+                                whileHover={{ y: -2 }}
+                                transition={{ duration: 0.18 }}
+                                className="rounded-xl border border-border/60 bg-background/40 p-4"
+                              >
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="space-y-1">
+                                    <p className="font-medium text-foreground">
+                                      {row.title}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {row.description}
+                                    </p>
+                                  </div>
+                                  <Switch
+                                    checked={enabled}
+                                    onCheckedChange={() =>
+                                      updateNotifyField(row.key)
+                                    }
+                                    disabled={
+                                      !config.is_enabled || !canUpdateTelegram
+                                    }
+                                  />
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                   {!config.is_enabled && (
                     <p className="text-xs text-muted-foreground">
-                      Telegram is disabled, so routing toggles are visible but
-                      inactive until you enable the service.
+                      Disabled — enable service to activate routing.
                     </p>
                   )}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/20 px-4 py-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">
-                      Save configuration
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Updates the Telegram bot token, chat IDs, enabled state,
-                      and alert triggers.
-                    </p>
-                  </div>
+                  <p className="text-sm font-medium text-foreground">
+                    Save configuration
+                  </p>
                   <Button
                     variant="primary"
                     onClick={handleSaveConfig}
                     isLoading={configSaving}
-                    disabled={configSaving || !isConfigDirty}
+                    disabled={
+                      configSaving || !isConfigDirty || !canUpdateTelegram
+                    }
                     leftIcon={<Check className="h-4 w-4" />}
                   >
-                    Save Telegram Config
+                    Save
                   </Button>
                 </div>
               </>
@@ -657,10 +761,7 @@ export const TelegramConfiguration: React.FC = () => {
         <div className="space-y-6">
           <Card className="overflow-hidden">
             <CardHeader className="border-b border-border/60 bg-card/30">
-              <CardTitle>Feature Flags</CardTitle>
-              <CardDescription>
-                Control which platform modules can use Telegram.
-              </CardDescription>
+              <CardTitle>Features</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 p-4">
               {featureRows.map((row) => {
@@ -679,28 +780,25 @@ export const TelegramConfiguration: React.FC = () => {
                     <Switch
                       checked={enabled}
                       onCheckedChange={() => updateFeatureField(row.key)}
-                      disabled={loading || featuresSaving}
+                      disabled={loading || featuresSaving || !canUpdateTelegram}
                     />
                   </div>
                 );
               })}
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/20 px-4 py-3">
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-foreground">
-                    Save feature flags
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Applies the current Telegram feature availability settings.
-                  </p>
-                </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/20 px-4 py-3">
+                <p className="text-sm font-medium text-foreground">
+                  Save features
+                </p>
                 <Button
                   variant="outline"
                   onClick={handleSaveFeatures}
                   isLoading={featuresSaving}
-                  disabled={featuresSaving || !isFeaturesDirty}
-                  leftIcon={<Copy className="h-4 w-4" />}
+                  disabled={
+                    featuresSaving || !isFeaturesDirty || !canUpdateTelegram
+                  }
+                  leftIcon={<Check className="h-4 w-4" />}
                 >
-                  Save Flags
+                  Save
                 </Button>
               </div>
             </CardContent>
@@ -708,10 +806,7 @@ export const TelegramConfiguration: React.FC = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle>Current Routing Summary</CardTitle>
-              <CardDescription>
-                Quick glance at the active Telegram notification setup.
-              </CardDescription>
+              <CardTitle>Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="rounded-xl border border-border/60 bg-background/40 p-4">
