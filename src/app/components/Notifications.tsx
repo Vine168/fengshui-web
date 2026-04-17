@@ -8,7 +8,15 @@ import {
 } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { Input, Select, Textarea } from "./ui/Form";
-import { Send, RefreshCw, Plus, Trash2 } from "lucide-react";
+import {
+  Send,
+  RefreshCw,
+  Plus,
+  Trash2,
+  Edit2,
+  CheckCircle2,
+  Info,
+} from "lucide-react";
 import {
   Table,
   TableBody,
@@ -18,6 +26,7 @@ import {
   TableRow,
 } from "./ui/table";
 import { Badge } from "./ui/Badge";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
 import {
   DialogRoot,
   DialogContent,
@@ -37,6 +46,7 @@ import {
   listNotifications,
   previewAudience,
   sendNotification,
+  updateNotificationDraft,
   type NotificationRow,
 } from "../../services/notifications.service";
 import { listSubscriptions } from "../../services/subscriptions.service";
@@ -151,7 +161,13 @@ export const Notifications: React.FC = () => {
   const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>("");
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isUpdateConfirmOpen, setIsUpdateConfirmOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<NotificationRow | null>(null);
   const [sendTarget, setSendTarget] = useState<NotificationRow | null>(null);
+  const [sendSuccessTarget, setSendSuccessTarget] =
+    useState<NotificationRow | null>(null);
+  const [alreadySentTarget, setAlreadySentTarget] =
+    useState<NotificationRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<NotificationRow | null>(
     null,
   );
@@ -438,6 +454,28 @@ export const Notifications: React.FC = () => {
 
   const openCreate = () => {
     resetForm();
+    setEditTarget(null);
+    setIsCreateOpen(true);
+  };
+
+  const openEdit = (notification: NotificationRow) => {
+    if (notification.status !== "draft") {
+      toast.error("Only draft notifications can be edited");
+      return;
+    }
+
+    setEditTarget(notification);
+    setForm({
+      title: notification.title,
+      body: notification.body,
+      elementTargets: notification.elements,
+      subscriptionTargets: notification.subscriptions,
+      subscriptionPlanIds: notification.subscriptionPlanIds,
+    });
+    setCustomPlansQuery("");
+    setPreviewCount(null);
+    setPreviewLabel(null);
+    setConfirmZeroAudienceSend(false);
     setIsCreateOpen(true);
   };
 
@@ -457,19 +495,51 @@ export const Notifications: React.FC = () => {
 
     setIsCreating(true);
     try {
-      await createNotificationDraft(payload);
-      toast.success("Notification draft created");
+      if (editTarget) {
+        await updateNotificationDraft(editTarget.id, payload);
+        toast.success("Notification draft updated");
+      } else {
+        await createNotificationDraft(payload);
+        toast.success("Notification draft created");
+      }
       setIsCreateOpen(false);
+      setIsUpdateConfirmOpen(false);
       resetForm();
+      setEditTarget(null);
       setCurrentPage(1);
       await fetchNotifications(1);
     } catch (error) {
+      if (editTarget && error instanceof HttpError && error.status === 403) {
+        toast.error(
+          "You do not have permission to update notifications (notifications.update).",
+        );
+        return;
+      }
+
       toast.error(
-        getErrorMessage(error, "Failed to create notification draft"),
+        getErrorMessage(
+          error,
+          editTarget
+            ? "Failed to update notification draft"
+            : "Failed to create notification draft",
+        ),
       );
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const handleSaveDraftClick = () => {
+    if (isCreating || !canSaveDraft) {
+      return;
+    }
+
+    if (editTarget) {
+      setIsUpdateConfirmOpen(true);
+      return;
+    }
+
+    void handleCreateDraft();
   };
 
   const handleSendDraft = async () => {
@@ -486,22 +556,35 @@ export const Notifications: React.FC = () => {
       return;
     }
 
-    if (latestNotification.status !== "draft") {
-      toast.error("Only draft notifications can be sent");
+    const resolvedRecipientCount =
+      latestNotification.recipientCount ??
+      draftRecipientCounts[latestNotification.id] ??
+      sendTarget.recipientCount;
+
+    if (latestNotification.status === "sent") {
+      setAlreadySentTarget(latestNotification);
       setSendTarget(null);
       setConfirmZeroAudienceSend(false);
       await fetchNotifications(currentPage);
       return;
     }
 
-    const resolvedRecipientCount =
-      latestNotification.recipientCount ??
-      draftRecipientCounts[latestNotification.id] ??
-      sendTarget.recipientCount;
+    if (latestNotification.status === "failed") {
+      toast.error(
+        "This notification is in failed status. Update or duplicate it as draft before sending.",
+      );
+      setSendTarget(null);
+      setConfirmZeroAudienceSend(false);
+      await fetchNotifications(currentPage);
+      return;
+    }
 
-    if (resolvedRecipientCount === 0 && !confirmZeroAudienceSend) {
-      setConfirmZeroAudienceSend(true);
-      toast.warning("Audience is zero. Click send again to confirm.");
+    if (resolvedRecipientCount === 0) {
+      toast.error(
+        "This notification has zero recipients and cannot be sent. Update audience targets and try again.",
+      );
+      setSendTarget(null);
+      setConfirmZeroAudienceSend(false);
       return;
     }
 
@@ -520,7 +603,7 @@ export const Notifications: React.FC = () => {
           return next;
         });
       }
-      toast.success("Notification sent");
+      setSendSuccessTarget(sentNotification);
       setSendTarget(null);
       setConfirmZeroAudienceSend(false);
       await fetchNotifications(currentPage);
@@ -534,21 +617,6 @@ export const Notifications: React.FC = () => {
   const handleDeleteNotification = async () => {
     if (!deleteTarget) return;
     if (isDeleting) return;
-
-    try {
-      const latestNotification = await getNotification(deleteTarget.id);
-      if (latestNotification.status !== "draft") {
-        toast.error("Only draft notifications can be deleted");
-        setDeleteTarget(null);
-        await fetchNotifications(currentPage);
-        return;
-      }
-    } catch (error) {
-      toast.error(
-        getErrorMessage(error, "Failed to validate notification status"),
-      );
-      return;
-    }
 
     setIsDeleting(true);
     try {
@@ -670,6 +738,7 @@ export const Notifications: React.FC = () => {
               <TableHeader>
                 <TableRow className="bg-transparent hover:bg-transparent border-b border-border/60">
                   <TableHead>Title</TableHead>
+                  <TableHead>Body</TableHead>
                   <TableHead>Elements</TableHead>
                   <TableHead>Subscriptions</TableHead>
                   <TableHead>Status</TableHead>
@@ -683,7 +752,7 @@ export const Notifications: React.FC = () => {
                 {loading ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="text-center h-32 text-muted-foreground"
                     >
                       Loading notifications...
@@ -692,7 +761,7 @@ export const Notifications: React.FC = () => {
                 ) : notifications.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="text-center h-32 text-muted-foreground"
                     >
                       No notifications found.
@@ -701,7 +770,7 @@ export const Notifications: React.FC = () => {
                 ) : filteredNotifications.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="text-center h-32 text-muted-foreground"
                     >
                       No notifications match this audience filter.
@@ -717,7 +786,9 @@ export const Notifications: React.FC = () => {
                         <p className="font-semibold text-foreground whitespace-nowrap truncate">
                           {notification.title || "-"}
                         </p>
-                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                      </TableCell>
+                      <TableCell className="max-w-[240px]">
+                        <p className="text-xs text-muted-foreground line-clamp-2">
                           {notification.body || "-"}
                         </p>
                       </TableCell>
@@ -798,9 +869,18 @@ export const Notifications: React.FC = () => {
                       >
                         <div className="flex items-center justify-center gap-2">
                           <Button
+                            variant="ghost"
+                            size="icon"
+                            disabled={notification.status !== "draft"}
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+                            onClick={() => openEdit(notification)}
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
                             variant="outline"
                             size="sm"
-                            disabled={notification.status !== "draft"}
+                            disabled={notification.status === "sent"}
                             className="h-8"
                             leftIcon={<Send className="h-3.5 w-3.5" />}
                             onClick={() => {
@@ -813,7 +893,6 @@ export const Notifications: React.FC = () => {
                           <Button
                             variant="ghost"
                             size="icon"
-                            disabled={notification.status !== "draft"}
                             className="h-8 w-8 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"
                             onClick={() => setDeleteTarget(notification)}
                           >
@@ -848,13 +927,24 @@ export const Notifications: React.FC = () => {
         onOpenChange={(open) => {
           setIsCreateOpen(open);
           if (!open) {
+            setIsUpdateConfirmOpen(false);
             resetForm();
+            setEditTarget(null);
           }
         }}
       >
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Create Notification Draft</DialogTitle>
+            <DialogTitle>
+              {editTarget
+                ? "Edit Notification Draft"
+                : "Create Notification Draft"}
+            </DialogTitle>
+            <DialogDescription>
+              {editTarget
+                ? "Update the draft content and audience before sending."
+                : "Create a draft notification and choose the target audience."}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-5 py-2">
@@ -1050,14 +1140,28 @@ export const Notifications: React.FC = () => {
             </DialogClose>
             <Button
               variant="primary"
-              onClick={handleCreateDraft}
+              onClick={handleSaveDraftClick}
               disabled={isCreating || !canSaveDraft}
             >
-              {isCreating ? "Saving..." : "Save Draft"}
+              {isCreating
+                ? "Saving..."
+                : editTarget
+                  ? "Update Draft"
+                  : "Save Draft"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </DialogRoot>
+
+      <ConfirmDialog
+        open={isUpdateConfirmOpen}
+        title="Confirm Draft Update"
+        description="Are you sure you want to update this draft notification?"
+        confirmLabel="Update Draft"
+        isLoading={isCreating}
+        onConfirm={handleCreateDraft}
+        onOpenChange={setIsUpdateConfirmOpen}
+      />
 
       <DialogRoot
         open={Boolean(sendTarget)}
@@ -1076,11 +1180,6 @@ export const Notifications: React.FC = () => {
                 ? `Send \"${sendTarget.title}\" to ${getTargetLabel(sendTarget)} now?`
                 : "Send this draft now?"}
             </DialogDescription>
-            {sendTarget?.status !== "draft" && (
-              <p className="text-xs text-rose-500">
-                This notification is no longer a draft and cannot be sent.
-              </p>
-            )}
             {sendTarget?.recipientCount === null && (
               <p className="text-xs text-muted-foreground">
                 Recipient count is not precomputed for this draft.
@@ -1099,13 +1198,77 @@ export const Notifications: React.FC = () => {
             <Button
               variant="primary"
               onClick={handleSendDraft}
-              disabled={isSending || sendTarget?.status !== "draft"}
+              disabled={isSending || sendTarget?.recipientCount === 0}
             >
-              {isSending
-                ? "Sending..."
-                : sendTarget?.recipientCount === 0 && !confirmZeroAudienceSend
-                  ? "Confirm Send"
-                  : "Send"}
+              {isSending ? "Sending..." : "Send"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
+
+      <DialogRoot
+        open={Boolean(sendSuccessTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSendSuccessTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-green-500/15 text-green-600">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <DialogTitle className="text-center">
+              Notification Sent Successfully
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              {sendSuccessTarget
+                ? `\"${sendSuccessTarget.title}\" has been sent.`
+                : "The notification has been sent."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="primary"
+              onClick={() => setSendSuccessTarget(null)}
+              className="w-full"
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </DialogRoot>
+
+      <DialogRoot
+        open={Boolean(alreadySentTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAlreadySentTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-sky-500/15 text-sky-600">
+              <Info className="h-7 w-7" />
+            </div>
+            <DialogTitle className="text-center">
+              Notification Already Sent
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              {alreadySentTarget
+                ? `\"${alreadySentTarget.title}\" was already sent before.`
+                : "This notification was already sent before."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="primary"
+              onClick={() => setAlreadySentTarget(null)}
+              className="w-full"
+            >
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1125,11 +1288,6 @@ export const Notifications: React.FC = () => {
                 ? `Are you sure you want to delete \"${deleteTarget.title}\"?`
                 : "Are you sure you want to delete this notification?"}
             </DialogDescription>
-            {deleteTarget?.status !== "draft" && (
-              <p className="text-xs text-rose-500">
-                Only draft notifications can be deleted.
-              </p>
-            )}
           </DialogHeader>
           <DialogFooter>
             <DialogClose asChild>
@@ -1138,7 +1296,7 @@ export const Notifications: React.FC = () => {
             <Button
               variant="danger"
               onClick={handleDeleteNotification}
-              disabled={isDeleting || deleteTarget?.status !== "draft"}
+              disabled={isDeleting}
             >
               {isDeleting ? "Deleting..." : "Delete"}
             </Button>

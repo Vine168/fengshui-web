@@ -68,6 +68,16 @@ export async function createNotification(payload: NotificationCreateInput) {
   return http.post<NotificationDetailResponse>('/admin/notifications', payload);
 }
 
+export async function updateNotificationById(
+  id: string,
+  payload: NotificationCreateInput,
+) {
+  return http.patch<NotificationDetailResponse>(
+    `/admin/notifications/${id}`,
+    payload,
+  );
+}
+
 export async function getNotificationById(id: string) {
   return http.get<NotificationDetailResponse>(`/admin/notifications/${id}`);
 }

@@ -5,6 +5,7 @@ import {
   getNotifications,
   previewNotificationAudience,
   sendNotificationById,
+  updateNotificationById,
   type NotificationsListParams,
 } from '../api/notifications.api';
 import type {
@@ -133,6 +134,14 @@ export async function previewAudience(params: NotificationPreviewInput) {
 
 export async function createNotificationDraft(payload: NotificationCreateInput) {
   const response = await createNotification(payload);
+  return normalizeNotification(unwrapNotificationData(asRecord(response).data));
+}
+
+export async function updateNotificationDraft(
+  id: string,
+  payload: NotificationCreateInput,
+) {
+  const response = await updateNotificationById(id, payload);
   return normalizeNotification(unwrapNotificationData(asRecord(response).data));
 }
 

@@ -5,6 +5,7 @@ import {
   BadgePlus,
   CheckCircle2,
   Edit,
+  Filter,
   KeyRound,
   Lock,
   MoreVertical,
@@ -49,6 +50,8 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -741,6 +744,8 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
   >("");
   const [adminRoleFilter, setAdminRoleFilter] = useState("");
   const [adminPage, setAdminPage] = useState(1);
+  const hasAdminFilters =
+    adminStatusFilter.length > 0 || adminRoleFilter.length > 0;
 
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [rolePagination, setRolePagination] = useState({
@@ -1107,10 +1112,10 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-2 max-w-2xl">
           <div>
-          <h2 className="text-3xl font-bold text-primary tracking-tight">
-            Admin User Management
-          </h2>
-        </div>
+            <h2 className="text-3xl font-bold text-primary tracking-tight">
+              Admin User Management
+            </h2>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -1166,65 +1171,89 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
         <TabsContent value="admins" className="space-y-6">
           <Card className="relative overflow-hidden border-white/10 bg-card/40 backdrop-blur-xl shadow-2xl">
             <div className="absolute top-0 right-0 -mr-24 -mt-24 h-80 w-80 rounded-full bg-primary/10 blur-[100px] opacity-50" />
-            <CardHeader className="relative z-10">
+            <CardHeader className="relative z-10 flex flex-col gap-4 pb-4 m-[0px] md:flex-row md:items-center md:justify-between">
               <CardTitle>Admin Users</CardTitle>
-            </CardHeader>
-            <CardContent className="relative z-10 space-y-4">
-              <div className="grid gap-3 lg:grid-cols-4">
-                <div className="relative lg:col-span-2">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+                <div className="relative w-full md:w-80">
+                  <Search className="pointer-events-none absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     value={adminSearch}
                     onChange={(event) => {
                       setAdminSearch(event.target.value);
                       setAdminPage(1);
                     }}
-                    placeholder="Search admins by name or email"
-                    className="pl-10"
+                    placeholder="Search admins by name or email..."
+                    className="pl-8"
                   />
                 </div>
 
-                <Select
-                  value={adminStatusFilter}
-                  onChange={(event) => {
-                    setAdminStatusFilter(
-                      event.target.value as "" | "active" | "inactive",
-                    );
-                    setAdminPage(1);
-                  }}
-                >
-                  <option key="" value="">
-                    All statuses
-                  </option>
-                  {ADMIN_STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {titleCase(status)}
-                    </option>
-                  ))}
-                </Select>
-
-                <Select
-                  value={adminRoleFilter}
-                  onChange={(event) => {
-                    setAdminRoleFilter(event.target.value);
-                    setAdminPage(1);
-                  }}
-                >
-                  <option key="all-roles" value="">
-                    All roles
-                  </option>
-                  {adminRoleFilterOptions.map((role, index) => (
-                    <option
-                      key={`${role.id || "role"}-${index}`}
-                      value={role.id}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      leftIcon={<Filter className="w-4 h-4" />}
                     >
-                      {role.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
+                      Filter
+                      {hasAdminFilters && (
+                        <span className="ml-1 rounded-full bg-primary w-2 h-2" />
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>Filter by Status</DropdownMenuLabel>
+                    <DropdownMenuGroup>
+                      {ADMIN_STATUS_OPTIONS.map((status) => (
+                        <DropdownMenuCheckboxItem
+                          key={status}
+                          checked={adminStatusFilter === status}
+                          onCheckedChange={(checked) => {
+                            setAdminStatusFilter(checked ? status : "");
+                            setAdminPage(1);
+                          }}
+                        >
+                          {titleCase(status)}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuGroup>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Filter by Role</DropdownMenuLabel>
+                    <DropdownMenuGroup>
+                      {adminRoleFilterOptions.map((role, index) => (
+                        <DropdownMenuCheckboxItem
+                          key={`${role.id || "role"}-${index}`}
+                          checked={adminRoleFilter === role.id}
+                          onCheckedChange={(checked) => {
+                            setAdminRoleFilter(checked ? role.id : "");
+                            setAdminPage(1);
+                          }}
+                        >
+                          {role.name}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-              <div className="rounded-2xl border border-border/50 overflow-hidden bg-card/30 backdrop-blur-xl shadow-lg">
+                {hasAdminFilters && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setAdminStatusFilter("");
+                      setAdminRoleFilter("");
+                      setAdminPage(1);
+                    }}
+                    className="text-muted-foreground hover:text-foreground"
+                    leftIcon={<XCircle className="w-4 h-4" />}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="relative z-10 p-0">
+              <div className="rounded-2xl border border-border/50 overflow-hidden bg-card/30 backdrop-blur-xl shadow-lg m-[0px]">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -1440,20 +1469,20 @@ export const AdminUsers: React.FC<{ initialTab?: TabKey }> = ({
                     </TableBody>
                   </Table>
                 </div>
-              </div>
 
-              {adminPagination.total_pages > 1 && (
-                <div className="border-t border-border/50 bg-card/20 backdrop-blur-sm">
-                  <Pagination
-                    currentPage={adminPagination.page}
-                    totalPages={adminPagination.total_pages}
-                    onPageChange={setAdminPage}
-                    totalItems={adminPagination.total}
-                    itemsPerPage={adminPagination.limit}
-                    itemName="admins"
-                  />
-                </div>
-              )}
+                {adminPagination.total_pages > 1 && (
+                  <div className="border-t border-border/50 bg-card/20 backdrop-blur-sm">
+                    <Pagination
+                      currentPage={adminPagination.page}
+                      totalPages={adminPagination.total_pages}
+                      onPageChange={setAdminPage}
+                      totalItems={adminPagination.total}
+                      itemsPerPage={adminPagination.limit}
+                      itemName="admins"
+                    />
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
